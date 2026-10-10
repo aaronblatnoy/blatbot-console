@@ -1,0 +1,7 @@
+e2e/
+e2e/.venv/
+screenshots/
+tools/
+systemd/
+.git/
+*.md.bak

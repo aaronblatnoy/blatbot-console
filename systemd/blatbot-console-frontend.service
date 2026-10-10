@@ -1,0 +1,23 @@
+[Unit]
+Description=Blatbot console frontend (static files only, no business logic)
+After=network-online.target
+
+[Service]
+Type=simple
+# Port 8793, not 8771 (blatbot's own service) and not 8780/8100/8000/8003/8901/8903/8771
+# (already used elsewhere on black-sky per CLAUDE.md and prior deploys). Binds only to
+# the Tailscale interface's address -- never 0.0.0.0 -- so the frontend is reachable on
+# the tailnet only, the same posture the backend's tailnet_gate enforces for the API.
+# Replace 100.x.y.z with black-sky's current Tailscale IP if it changes.
+ExecStart=/usr/bin/env python3 %h/blatbot-console/serve.py 8793
+Environment=PYTHONUNBUFFERED=1
+# Set to black-sky's actual Tailscale IP (see CLAUDE.md: the server Tailscale address) before
+# enabling this unit. Left unset, serve.py falls back to 127.0.0.1, which the unit
+# should never actually run with.
+Environment=BIND_HOST=100.x.y.z
+WorkingDirectory=%h/blatbot-console
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

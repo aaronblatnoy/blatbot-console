@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#00010d">
+  <title>Blatbot console</title>
+  <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/config.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to console</a>
+
+  <header class="topbar">
+    <div class="identity">
+<a class="brand-avatar-link" href="/console/" data-route="home" aria-label="Blatbot console home"><img class="brand-avatar" alt="" width="64" height="64"><span class="wordmark">BLATBOT</span></a>
+    </div>
+    <nav aria-label="Console sections">
+      <a href="/console/" data-route="home" aria-current="page">Home</a>
+      <a href="/console/requests" data-route="requests">Requests <span id="nav-waiting-count" class="nav-count" hidden></span></a>
+      <a href="/console/permissions" data-route="permissions">Permissions</a>
+      <a href="/console/people" data-route="people">People</a>
+      <a href="/console/roles" data-route="roles">Roles</a>
+      <a href="/console/scopes" data-route="scopes">Scopes</a>
+      <a href="/console/tasks" data-route="tasks">Tasks</a>
+      <a href="/console/schedules" data-route="schedules">Schedules</a>
+      <a href="/console/health" data-route="health">Health</a>
+      <a href="/console/settings" data-route="settings">Settings</a>
+    </nav>
+    <label class="mobile-nav">
+      <span class="visually-hidden">Console page</span>
+      <select id="mobile-route" aria-label="Console page">
+        <option value="/console/">Home</option>
+        <option value="/console/requests">Requests</option>
+        <option value="/console/permissions">Permissions</option>
+        <option value="/console/people">People</option>
+        <option value="/console/roles">Roles</option>
+        <option value="/console/scopes">Scopes</option>
+        <option value="/console/tasks">Tasks</option>
+        <option value="/console/schedules">Schedules</option>
+        <option value="/console/health">Health</option>
+        <option value="/console/settings">Settings</option>
+      </select>
+      <span id="mobile-request-status" class="mobile-request-status" hidden>Req <span id="mobile-waiting-count" class="nav-count"></span></span>
+    </label>
+    <div class="connection" aria-live="polite">
+      <span id="stream-dot" class="stream-dot is-connecting"></span>
+      <span id="stream-label">connecting</span>
+      <button class="key-button" type="button" data-open-shortcuts aria-label="Show keyboard shortcuts">?</button>
+    </div>
+  </header>
+
+  <div id="startup-banner" class="startup-banner" role="status" hidden>
+    <div>
+      <strong>Gate is starting.</strong>
+      <span id="startup-detail">The console will retry when the API is ready.</span>
+    </div>
+    <button id="retry-all" class="button button-quiet" type="button">Retry now</button>
+  </div>
+
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+  <main id="main">
+    <section id="home" class="section home-section" data-view="home" aria-labelledby="home-title">
+      <div class="section-heading">
+        <div>
+          <h1 id="home-title">Home</h1>
+          <p class="section-summary">A calm overview. Each block opens the page that owns it.</p>
+        </div>
+      </div>
+      <div id="home-content" class="home-grid" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="requests" class="section waiting-section" data-view="requests" aria-labelledby="requests-title" hidden>
+      <div class="section-heading waiting-heading">
+        <div>
+          <h2 id="requests-title">Waiting on you</h2>
+          <p id="waiting-summary" class="section-summary">Loading requests…</p>
+        </div>
+        <div id="waiting-count" class="big-count" aria-hidden="true">—</div>
+      </div>
+      <div id="waiting-list" class="waiting-list" aria-live="polite" aria-busy="true"></div>
+
+      <details class="history-block">
+        <summary>
+          <span>Request history</span>
+          <span id="history-counts" class="summary-meta">loading</span>
+        </summary>
+        <div class="filter-bar" role="group" aria-label="Filter requests">
+          <button class="filter is-active" type="button" data-request-filter="all">All</button>
+          <button class="filter" type="button" data-request-filter="running">Running</button>
+          <button class="filter" type="button" data-request-filter="done">Done</button>
+          <button class="filter" type="button" data-request-filter="failed">Failed</button>
+        </div>
+        <div id="request-history" class="request-history"></div>
+      </details>
+    </section>
+
+    <section id="permissions" class="section" data-view="permissions" aria-labelledby="permissions-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="permissions-title">People &amp; permissions</h2>
+          <p class="section-summary">Role scopes run automatically. Everything else interrupts you.</p>
+        </div>
+        <div class="heading-actions">
+          <label class="search-field">
+            <span class="visually-hidden">Search people and scopes</span>
+            <span aria-hidden="true">/</span>
+            <input id="permission-search" type="search" placeholder="Find person or scope" autocomplete="off">
+          </label>
+          <button id="sync-people" class="button button-quiet" type="button">Refresh from Inkbox</button>
+          <button id="add-person" class="button button-primary" type="button">Add person</button>
+        </div>
+      </div>
+      <p class="inline-guidance">Role scopes and who holds them are managed on the <a href="/console/roles" data-route="roles">Roles page</a>.
+        <span id="people-last-sync" class="muted"></span></p>
+
+      <div class="permissions-layout">
+        <div class="people-pane">
+          <div class="pane-label"><span>People</span><span id="people-count">—</span></div>
+          <div id="people-list" class="people-list" role="listbox" aria-label="People"></div>
+        </div>
+        <div id="person-editor" class="editor-pane">
+          <div class="empty-state">Select a person to inspect their permissions.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="roles" class="section" data-view="roles" aria-labelledby="roles-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="roles-title">Roles</h2>
+          <p class="section-summary">A role's scopes run for every person who holds it. A role with a send scope is called out: Blatbot can speak as itself for that person without Aaron seeing it first.</p>
+        </div>
+        <div class="heading-actions">
+          <span id="roles-count" class="summary-meta">—</span>
+          <button id="add-role" class="button button-primary" type="button">Add role</button>
+        </div>
+      </div>
+      <div id="roles-list" class="roles-list" aria-busy="true"></div>
+    </section>
+
+    <section id="people" class="section" data-view="people" aria-labelledby="directory-title" hidden>
+      <div class="section-heading">
+        <div><h2 id="directory-title">People</h2>
+          <p class="section-summary">One entry per person. Their contacts (phone, email, Telegram, name) live inside that one entry; permissions are managed on Roles and Permissions.</p></div>
+        <div class="heading-actions">
+          <label class="search-field"><span class="visually-hidden">Search contacts</span>
+            <input id="directory-search" type="search" placeholder="Find a person or contact" autocomplete="off"></label>
+        </div>
+      </div>
+      <p class="inline-guidance">Contacts are only ever grouped by an explicit link, never because two names look alike. An unlinked contact stays its own entry until attached or promoted to a person.</p>
+      <div id="contact-directory" class="roles-list" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
+      <div class="section-heading">
+        <div><h2 id="scopes-title">Scopes</h2>
+          <p class="section-summary">The tree Blatbot walks to decide what a request may use, left to right: system, then the question asked (or "always"), then the scopes granted, then the tools inside each scope. Click any box to fold or unfold what hangs off it; hover for its description. Role names next to a scope are the roles that hold it.</p></div>
+      </div>
+      <div id="scopes-breakdown" class="roles-list" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="tasks" class="section" data-view="tasks" aria-labelledby="tasks-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="tasks-title">Tasks</h2>
+          <p class="section-summary">Recent work and its recorded ledger.</p>
+        </div>
+        <button id="refresh-tasks" class="button button-quiet" type="button">Refresh</button>
+      </div>
+      <div id="tasks-list" class="task-list" aria-busy="true"></div>
+    </section>
+
+    <section id="schedules" class="section" data-view="schedules" aria-labelledby="schedules-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="schedules-title">Schedules</h2>
+          <p class="section-summary">Approved unattended work and continuing jobs.</p>
+        </div>
+        <div class="heading-actions">
+          <button id="global-schedules-pause" class="button button-quiet" type="button">Pause all</button>
+          <button id="add-schedule" class="button button-primary" type="button">New schedule</button>
+        </div>
+      </div>
+      <div id="schedules-list" class="schedule-list" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="health" class="section health-section" data-view="health" aria-labelledby="health-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="health-title">Health</h2>
+          <p class="section-summary">Gateway status and recent operational failures.</p>
+        </div>
+        <button id="refresh-health" class="button button-quiet" type="button">Refresh</button>
+      </div>
+      <div id="health-content" aria-busy="true"></div>
+    </section>
+
+    <section id="settings" class="section" data-view="settings" aria-labelledby="settings-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="settings-title">Settings</h2>
+          <p class="section-summary">Knobs that change how the assistant behaves.</p>
+        </div>
+      </div>
+      <div id="settings-list" class="settings-list" aria-live="polite" aria-busy="true"></div>
+    </section>
+  </main>
+
+  <dialog id="task-dialog" class="ledger-dialog">
+    <div class="dialog-head">
+      <div>
+        <span id="ledger-id" class="mono muted"></span>
+        <h2 id="ledger-title">Task ledger</h2>
+      </div>
+      <button class="close-button" type="button" data-close-dialog="task-dialog" aria-label="Close ledger">Close</button>
+    </div>
+    <div id="ledger-content" class="ledger-content"></div>
+  </dialog>
+
+  <dialog id="schedule-dialog" class="ledger-dialog schedule-dialog">
+    <form id="schedule-form">
+      <div class="dialog-head">
+        <h2 id="schedule-dialog-title">New schedule</h2>
+        <button class="close-button" type="button" data-close-dialog="schedule-dialog">Close</button>
+      </div>
+      <input id="schedule-id" type="hidden">
+      <label>Title<input id="schedule-title" name="title" required></label>
+      <label>Exact prompt<textarea id="schedule-prompt" name="prompt" rows="6" required></textarea></label>
+      <div class="form-grid">
+        <label>Kind<select id="schedule-kind" name="kind"><option value="once">Once</option><option value="recurring">Recurring</option><option value="continue">Continue</option></select></label>
+        <label>Report mode<select id="schedule-report" name="report_mode"><option value="always">Always</option><option value="changed">Only when it did something or failed</option></select></label>
+        <label>Run at<input id="schedule-run-at" name="run_at" type="datetime-local"></label>
+        <label>Cron<input id="schedule-cron" name="cron" placeholder="0 9 * * 1-5"></label>
+        <label>Timezone<input id="schedule-timezone" name="timezone" value="America/New_York"></label>
+        <label>Maximum runs<input id="schedule-max-runs" name="max_runs" type="number" min="1" value="20"></label>
+        <label>Deadline<input id="schedule-deadline" name="deadline" type="datetime-local"></label>
+      </div>
+      <fieldset><legend>Scopes</legend><div id="schedule-scopes" class="scope-options"></div></fieldset>
+      <div class="form-actions"><button class="button button-primary" type="submit">Save for approval</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="shortcuts-dialog" class="shortcuts-dialog">
+    <div class="dialog-head">
+      <h2>Keyboard</h2>
+      <button class="close-button" type="button" data-close-dialog="shortcuts-dialog" aria-label="Close shortcuts">Close</button>
+    </div>
+    <dl class="shortcut-list">
+      <div><dt><kbd>/</kbd></dt><dd>Search people and scopes</dd></div>
+      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move through waiting requests</dd></div>
+      <div><dt><kbd>y</kbd></dt><dd>Approve the selected request</dd></div>
+      <div><dt><kbd>n</kbd></dt><dd>Reject the selected request</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>Show this reference</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd>Close a dialog</dd></div>
+    </dl>
+  </dialog>
+
+  <template id="scope-group-template">
+    <fieldset class="scope-group">
+      <legend></legend>
+      <div class="scope-options"></div>
+    </fieldset>
+  </template>
+
+  <script type="module" src="/static/console.js"></script>
+</body>
+</html>
