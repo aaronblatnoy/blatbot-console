@@ -8,8 +8,10 @@ const state = {
   home: null,
   streamState: 'connecting',
   people: [],
-  directoryPeople: [],
-  directoryUnlinked: [],
+  unassigned: [],
+  personDirty: false,
+  editorPerson: null,
+  ownEvents: [],
   roles: [],
   scopes: [],
   scopesBreakdown: [],
@@ -38,7 +40,6 @@ const state = {
 const VIEW_PATHS = {
   home: '/console/',
   requests: '/console/requests',
-  permissions: '/console/permissions',
   people: '/console/people',
   roles: '/console/roles',
   scopes: '/console/scopes',
@@ -124,7 +125,7 @@ function routeFromPath(pathname = location.pathname) {
   const path = pathname.replace(/\/+$/, '') || '/console';
   if (path === '/console') return { view: 'home', taskId: null };
   if (path === '/console/requests') return { view: 'requests', taskId: null };
-  if (path === '/console/permissions') return { view: 'permissions', taskId: null };
+  if (path === '/console/permissions') return { view: 'people', taskId: null };
   if (path === '/console/people') return { view: 'people', taskId: null };
   if (path === '/console/roles') return { view: 'roles', taskId: null };
   if (path === '/console/scopes') return { view: 'scopes', taskId: null };
@@ -168,8 +169,7 @@ async function loadView(view = state.activeView, { force = false } = {}) {
   try {
     if (view === 'home') await refreshHome({ throwOnError: true });
     if (view === 'requests') await refreshRequests({ throwOnError: true });
-    if (view === 'permissions') await refreshPermissions({ throwOnError: true });
-    if (view === 'people') await refreshDirectory({ throwOnError: true });
+    if (view === 'people') await refreshPeople({ throwOnError: true });
     if (view === 'roles') await refreshRoles({ throwOnError: true });
     if (view === 'scopes') await refreshScopesBreakdown({ throwOnError: true });
     if (view === 'tasks') await refreshTasks({ throwOnError: true });
@@ -316,7 +316,7 @@ function homePeopleBlock() {
       ? `<ul class="home-mini-list">${people.roles.map(r => `<li><span class="home-mini-summary mono">${escapeHTML(r.name)}</span><span class="muted">${r.members} member${r.members === 1 ? '' : 's'}</span></li>`).join('')}</ul>`
       : '<p class="home-card-body muted">No roles configured.</p>'}
     <p class="home-card-body muted">${lastSync.at ? `Last synced ${escapeHTML(relativeAge(lastSync.at))}` : 'Never synced from Inkbox.'}${failed.length ? ` — failed: ${escapeHTML(failed.join(', '))}` : ''}</p>
-    <a class="home-card-link" href="${VIEW_PATHS.permissions}" data-home-link="permissions">See people →</a>
+    <a class="home-card-link" href="${VIEW_PATHS.people}" data-home-link="people">See people →</a>
   </article>`;
 }
 
@@ -327,7 +327,7 @@ function homeContactsBlock() {
     ${contacts.length
       ? `<ul class="home-mini-list">${contacts.map(c => `<li><span class="home-mini-summary">${escapeHTML(c.person || c.key)}</span><span class="muted">${escapeHTML((c.channels || []).join(', ') || 'unknown channel')} &middot; ${escapeHTML(relativeAge(c.last_seen))}</span></li>`).join('')}</ul>`
       : '<p class="home-card-body muted">No one has reached out yet.</p>'}
-    <a class="home-card-link" href="${VIEW_PATHS.permissions}" data-home-link="permissions">See people →</a>
+    <a class="home-card-link" href="${VIEW_PATHS.people}" data-home-link="people">See people →</a>
   </article>`;
 }
 
@@ -434,158 +434,14 @@ async function refreshRequests({ throwOnError = false } = {}) {
   }
 }
 
-function filteredPeople() {
-  const term = state.search.trim().toLowerCase();
-  if (!term) return state.people;
-  return state.people.filter(person => [person.person, person.key, person.role, person.note, ...(person.scopes || []), ...(person.effective_scopes || []), ...(person.channels || [])].some(value => String(value || '').toLowerCase().includes(term)));
-}
-
-function renderPeople() {
-  // No cap: every person the search matches is rendered, not a page of them.
-  const people = filteredPeople();
-  $('#people-count').textContent = `${people.length}/${state.peopleTotal ?? state.people.length}`;
-  const lastSync = state.peopleLastSync || {};
-  const syncLabel = $('#people-last-sync');
-  if (syncLabel) syncLabel.textContent = lastSync.at ? `last synced ${formatTime(new Date(lastSync.at * 1000).toISOString())}` : 'never synced from Inkbox';
-  if (state.selectedPerson && !state.people.some(person => person.key === state.selectedPerson)) state.selectedPerson = null;
-  if (!state.selectedPerson && people.length) state.selectedPerson = people[0].key;
-  $('#people-list').innerHTML = people.length ? people.map(person => {
-    const counts = person.scope_counts || { read: 0, write: 0, total: (person.effective_scopes || []).length };
-    return `<button class="person-row${person.key === state.selectedPerson ? ' is-selected' : ''}" type="button" role="option" aria-selected="${person.key === state.selectedPerson}" data-person-key="${escapeHTML(person.key)}">
-    <span class="person-role">${escapeHTML(person.role || 'no role')}</span>
-    <span class="person-name">${escapeHTML(person.person || 'Unnamed')}</span>
-    <span class="person-key">${escapeHTML(person.key)}</span>
-    <span class="person-impact"><span class="auto">${counts.read} read</span> / <span class="ask">${counts.write} write</span>${person.has_send ? ' <span class="send-mark">send</span>' : ''}</span>
-  </button>`;
-  }).join('') : '<div class="empty-state">No people match this search.</div>';
-  renderPersonEditor();
-}
-
-async function syncPeopleFromInkbox(event) {
-  const buttons = [$('#sync-people'), $('#home-sync-people')].filter(Boolean);
-  buttons.forEach(button => { button.disabled = true; button.textContent = 'Refreshing…'; });
-  try {
-    const result = await post('/people/sync', {});
-    await Promise.all([refreshPermissions(), refreshHome({ throwOnError: false })]);
-    showNotice(`Synced ${result.people} people from Inkbox.`);
-  } catch (error) {
-    showNotice(`Refresh from Inkbox failed: ${error.message}`, 'error', 8000);
-  } finally {
-    buttons.forEach(button => { button.disabled = false; button.textContent = 'Refresh from Inkbox'; });
-  }
-}
-
-function renderPersonEditor(draft = null) {
-  const person = draft || state.people.find(item => item.key === state.selectedPerson);
-  if (!person) {
-    $('#person-editor').innerHTML = '<div class="empty-state">No people configured. Add a handle to start with zero permissions.</div>';
-    return;
-  }
-  const isNew = Boolean(person.__new);
-  const held = new Set(heldRoles(person.role));
-  const inherited = new Set(state.roles.filter(role => held.has(role.name)).flatMap(role => role.scopes || []));
-  const extras = new Set(person.scopes || []);
-  const effective = new Set([...inherited, ...extras]);
-  const interrupted = state.scopes.map(scope => scope.name).filter(name => !effective.has(name));
-  $('#person-editor').innerHTML = `<form id="person-form">
-    <div class="editor-head">
-      <div>
-        <h3>${isNew ? 'New person' : escapeHTML(person.person || person.key)}</h3>
-        <span class="person-key">${isNew ? 'Defaults to no permissions' : escapeHTML(person.key)}</span>
-      </div>
-    </div>
-    <div class="editor-grid">
-      <label class="field">Handle
-        <input name="key" class="mono" required value="${escapeHTML(person.key || '')}" placeholder="email, phone, Telegram id, or name" ${isNew ? '' : 'readonly'}>
-      </label>
-      <label class="field">Display name
-        <input name="person" value="${escapeHTML(person.person || '')}" placeholder="Name">
-      </label>
-      <label class="field">Role
-        ${rolePicker(person.role, 'role')}
-        <a class="roles-link" href="${VIEW_PATHS.roles}" data-link>Manage roles →</a>
-      </label>
-      <label class="field">Note
-        <textarea name="note" placeholder="Why this access exists">${escapeHTML(person.note || '')}</textarea>
-      </label>
-    </div>
-    <div class="consequence">
-      <div><span class="consequence-label auto">Runs without asking (${effective.size})</span><div class="scope-plain-list">${effective.size ? [...effective].sort().map(escapeHTML).join('<br>') : 'Nothing'}</div></div>
-      <div><span class="consequence-label ask">Still asks you (${interrupted.length})</span><div class="scope-plain-list">${interrupted.length ? interrupted.sort().map(escapeHTML).join('<br>') : 'Nothing'}</div></div>
-    </div>
-    <div class="scope-editor-title"><h3>Extra scopes</h3><p>Checked here in addition to the role.</p></div>
-    <div class="scope-groups">${renderScopeGroups(extras, inherited)}</div>
-    <div class="editor-actions">
-      ${isNew ? '<button class="button button-quiet" type="button" data-cancel-person>Cancel</button>' : '<button class="button button-danger" type="button" data-delete-person>Delete person</button>'}
-      <div class="save-actions"><button class="button button-primary" type="submit">Save person</button></div>
-    </div>
-  </form>`;
-}
-
-function renderScopeGroups(selected = new Set(), inherited = new Set()) {
-  const term = state.search.trim().toLowerCase();
-  const groups = Map.groupBy
-    ? Map.groupBy(state.scopes, scope => scope.group || 'Other')
-    : state.scopes.reduce((map, scope) => map.set(scope.group || 'Other', [...(map.get(scope.group || 'Other') || []), scope]), new Map());
-  return [...groups.entries()].map(([group, scopes]) => {
-    const matches = scope => !term || `${scope.name} ${scope.purpose || ''} ${group}`.toLowerCase().includes(term);
-    const groupHidden = term && !scopes.some(matches);
-    return `<fieldset class="scope-group" ${groupHidden ? 'hidden' : ''}><legend>${escapeHTML(group)}</legend><div class="scope-options">${scopes.map(scope => {
-      const isInherited = inherited.has(scope.name);
-      return `<label class="scope-option${isInherited ? ' is-inherited' : ''}" ${matches(scope) ? '' : 'hidden'}>
-        <input type="checkbox" name="scopes" value="${escapeHTML(scope.name)}" ${selected.has(scope.name) ? 'checked' : ''} ${isInherited ? 'disabled' : ''}>
-        <span class="scope-option-text"><span class="scope-name">${escapeHTML(scope.name)}<span class="scope-detail-kind is-${escapeHTML(scope.kind || (scope.read ? 'read' : 'write'))}">${escapeHTML(scope.read ? 'read' : (scope.kind || 'write'))}</span>${isInherited ? '<span class="inherited-mark">role</span>' : ''}</span><span class="scope-purpose">${escapeHTML(scope.description || scope.purpose || `${scope.tools_count || 0} tools`)}</span></span>
-      </label>`;
-    }).join('')}</div></fieldset>`;
-  }).join('');
-}
-
-async function savePerson(form) {
-  const data = new FormData(form);
-  const body = {
-    key: data.get('key').trim(),
-    person: data.get('person').trim(),
-    role: data.getAll('role').join(', '),
-    scopes: data.getAll('scopes'),
-    note: data.get('note').trim(),
-  };
-  if (!body.key) return showNotice('A handle is required.', 'error');
-  setFormBusy(form, true);
-  try {
-    await post('/people', body);
-    state.selectedPerson = body.key;
-    await refreshPermissions();
-    showNotice(`Saved ${body.person || body.key}.`);
-  } catch (error) {
-    showNotice(`Person not saved: ${error.message}`, 'error', 8000);
-    setFormBusy(form, false);
-  }
-}
-
-async function deletePerson(key) {
-  if (!window.confirm(`Delete ${key}? Their permissions will be removed.`)) return;
-  try {
-    await post('/people/delete', { key });
-    state.selectedPerson = null;
-    await refreshPermissions();
-    showNotice(`Deleted ${key}.`);
-  } catch (error) { showNotice(`Person not deleted: ${error.message}`, 'error'); }
-}
-
-async function refreshPermissions({ throwOnError = false } = {}) {
-  try {
-    const [peopleResponse, roles, scopes] = await Promise.all([api('/people'), api('/roles'), api('/scopes')]);
-    state.people = peopleResponse.people || [];
-    state.peopleTotal = peopleResponse.count ?? state.people.length;
-    state.peopleLastSync = peopleResponse.last_sync || {};
-    state.roles = roles; state.scopes = scopes;
-    state.loaded.permissions = true;
-    state.invalidated.permissions = false;
-    renderPeople();
-  } catch (error) {
-    if (throwOnError) throw error;
-    showNotice(`Permissions not refreshed: ${error.message}`, 'error');
-  }
+function renderScopeGroups(selected = new Set()) {
+  const groups = state.scopes.reduce((map, scope) =>
+    map.set(scope.group || 'Other', [...(map.get(scope.group || 'Other') || []), scope]), new Map());
+  return [...groups.entries()].map(([group, scopes]) => `<fieldset class="scope-group">
+    <legend>${escapeHTML(group)}</legend><div class="scope-options">${scopes.map(scope => `<label class="scope-option">
+      <input type="checkbox" name="scopes" value="${escapeHTML(scope.name)}" ${selected.has(scope.name) ? 'checked' : ''}>
+      <span class="scope-option-text"><span class="scope-name">${escapeHTML(scope.name)}<span class="scope-detail-kind is-${escapeHTML(scope.kind || (scope.read ? 'read' : 'write'))}">${escapeHTML(scope.read ? 'read' : (scope.kind || 'write'))}</span></span><span class="scope-purpose">${escapeHTML(scope.description || scope.purpose || `${scope.tools_count || 0} tools`)}</span></span>
+    </label>`).join('')}</div></fieldset>`).join('');
 }
 
 async function refreshRoles({ throwOnError = false } = {}) {
@@ -601,184 +457,140 @@ async function refreshRoles({ throwOnError = false } = {}) {
   }
 }
 
-// -- People page: one entry per person, contacts managed inside it ------------
-
-function heldRoles(value) {
-  return String(value || '').split(',').map(name => name.trim().toLowerCase()).filter(Boolean);
-}
-
-// One checkbox per configured role: a person can hold several, so it is a pick list, not free text.
+function heldRoles(value) { return String(value || '').split(',').map(n => n.trim()).filter(Boolean); }
 function rolePicker(held, inputName) {
   const have = new Set(heldRoles(held));
-  const known = new Set(state.roles.map(role => role.name));
-  const stale = [...have].filter(name => !known.has(name));
-  if (!state.roles.length && !stale.length) return '<span class="muted">No roles configured.</span>';
-  return `<span class="role-picker">${state.roles.map(role => `<label class="role-pick"><input type="checkbox" name="${inputName}" value="${escapeHTML(role.name)}" ${have.has(role.name) ? 'checked' : ''}>${escapeHTML(role.name)}</label>`).join('')}${stale.map(name => `<label class="role-pick is-stale" title="This role no longer exists"><input type="checkbox" name="${inputName}" value="${escapeHTML(name)}" checked>${escapeHTML(name)}</label>`).join('')}</span>`;
+  return state.roles.map(role => `<label class="person-role-choice"><input type="checkbox" name="${inputName}" value="${escapeHTML(role.name)}" ${have.has(role.name) ? 'checked' : ''}><span>${escapeHTML(role.name)}</span></label>`).join('') || '<span class="muted">No roles configured.</span>';
 }
-
-async function refreshDirectory({ throwOnError = false } = {}) {
+const personName = p => p?.display || '(unnamed)';
+const contactsOf = p => (p?.contacts || []).filter(c => c.kind !== 'name');
+const contactKind = kind => (state.contactKinds || []).find(k => k.kind === kind) || {kind, label: kind, hint: ''};
+function kindOptions(kind) { return (state.contactKinds || []).filter(k => k.kind !== 'name' && (k.addable || k.kind === kind)).map(k => `<option value="${escapeHTML(k.kind)}" ${k.kind === kind ? 'selected' : ''}>${escapeHTML(k.label)}</option>`).join(''); }
+function personOptions(exclude) { return state.people.filter(p => p.id !== exclude).map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(personName(p))}</option>`).join(''); }
+function filteredPeople() {
+  const term = state.search.trim().toLowerCase();
+  return state.people.filter(p => [p.display, p.role, ...(p.effective_scopes || []), ...(p.scopes || []), ...(p.contacts || []).flatMap(c => [c.value, c.raw_value])].some(v => String(v || '').toLowerCase().includes(term)));
+}
+function renderPeople() {
+  state.people.sort((a,b) => personName(a).localeCompare(personName(b)));
+  if (state.selectedPerson && !state.people.some(p => p.id === state.selectedPerson) && !state.personDirty) state.selectedPerson = null;
+  const people = filteredPeople();
+  $('#people-count').textContent = `${people.length}/${state.people.length}`;
+  $('#people-list').innerHTML = people.length ? people.map(p => `<button type="button" class="person-row${p.id === state.selectedPerson ? ' is-selected' : ''}" role="option" aria-selected="${p.id === state.selectedPerson}" data-person-key="${escapeHTML(p.id)}"><span class="person-name">${escapeHTML(personName(p))}</span><span class="person-role">${escapeHTML(p.role || 'No roles')}</span><span class="person-impact">${contactsOf(p).length} contact${contactsOf(p).length === 1 ? '' : 's'}</span></button>`).join('') : `<div class="empty-state">${state.people.length ? 'No people match this search.' : 'No people yet'}</div>`;
+  const selected = state.people.find(p => p.id === state.selectedPerson);
+  const unassigned = state.unassigned.filter(c => c.kind !== 'name');
+  $('#unassigned-count').textContent = unassigned.length;
+  $('#switch-unassigned-count').textContent = unassigned.length;
+  $('#unassigned-list').innerHTML = unassigned.filter(c => !state.search || `${c.value} ${c.raw_value || ''} ${contactKind(c.kind).label}`.toLowerCase().includes(state.search.toLowerCase())).map(c => `<div class="unassigned-row" data-contact-id="${escapeHTML(c.id)}"><strong>${escapeHTML(c.raw_value || c.value)}</strong><span class="muted">${escapeHTML(contactKind(c.kind).label)} · ${escapeHTML(c.source || 'unknown source')} · ${escapeHTML(formatTime(c.last_seen))}</span><div class="unassigned-actions"><button type="button" class="button button-quiet" data-assign ${selected ? '' : 'disabled'}>Assign to ${escapeHTML(selected ? personName(selected) : 'selected person')}</button><button type="button" class="button button-quiet" data-new-contact-person>New person</button><button type="button" class="button button-quiet" data-delete-unassigned>Delete</button></div></div>`).join('') || '<p class="muted">No unassigned contacts.</p>';
+  $(`[data-person-key="${CSS.escape(state.selectedPerson || '')}"]`)?.scrollIntoView({block:'nearest'});
+}
+function renderPersonEditor() {
+  const p = state.people.find(p => p.id === state.selectedPerson);
+  state.editorPerson = p ? structuredClone(p) : null;
+  state.personDirty = false;
+  if (!p) { $('#person-editor').innerHTML = '<div class="empty-state">Select a person</div>'; return; }
+  const contacts = contactsOf(p);
+  $('#person-editor').innerHTML = `<h3>Person</h3><p id="person-external-change" hidden>Changed elsewhere, <button type="button" class="button button-quiet" data-reload-person>reload</button></p>
+    <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><fieldset class="person-role-group"><legend>Roles</legend><div class="person-role-choices">${rolePicker(p.role, 'role')}</div></fieldset><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><span id="person-dirty-label" hidden>Unsaved changes</span><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button></div></form>
+    <h3>Contacts</h3><div id="person-contacts">${contacts.length ? contacts.map(c => `<div class="person-contact" data-contact-id="${escapeHTML(c.id)}"><select aria-label="Contact type" data-contact-kind>${kindOptions(c.kind)}</select><input aria-label="Contact value" data-contact-value value="${escapeHTML(c.raw_value || c.value)}" placeholder="${escapeHTML(contactKind(c.kind).hint)}"><button class="button button-quiet" type="button" data-remove-contact>Remove</button><div class="contact-status" role="status"></div></div>`).join('') : '<p class="muted">No contacts. Add one below or assign one from the unassigned list.</p>'}</div>
+    <form id="contact-add-form" class="person-contact"><select aria-label="New contact type" name="kind">${kindOptions()}</select><input name="value" aria-label="New contact value" required placeholder="${escapeHTML((state.contactKinds || []).find(k => k.addable)?.hint || '')}"><button class="button button-quiet" type="submit">Add</button><div class="contact-status" role="status"></div></form>
+    <div class="person-access"><h3>Can act without asking</h3>${(p.effective_scopes || []).length ? `<ul>${p.effective_scopes.map(s => `<li class="scope-name">${escapeHTML(s)}</li>`).join('')}</ul>` : '<p class="muted">No scopes granted.</p>'}${p.scopes?.length ? `<p class="muted">plus ${p.scopes.length} direct grants</p>` : ''}<a href="/console/roles" data-route="roles">Edit roles</a></div>
+    <details class="person-advanced"><summary>Move or merge</summary><form id="contact-move-form"><label class="field">Contact<select name="contact_id" required><option value="">Choose contact</option>${contacts.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(contactKind(c.kind).label + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select></label><label class="field">To person (or Unassigned)<select name="person_id"><option value="">Unassigned</option>${personOptions(p.id)}</select></label><button class="button button-quiet" type="submit">Move</button></form><form id="person-merge-form"><label class="field">This is the same person as<select name="keep_id" required><option value="">Choose person</option>${personOptions(p.id)}</select></label><p class="muted">Their contacts move to that person. Roles and note are not combined.</p><button class="button button-quiet" type="submit">Merge into them</button></form></details><button class="button button-danger" type="button" data-delete-person>Delete person</button>`;
+}
+function markPersonDirty() {
+  const form = $('#person-form'); if (!form || !state.editorPerson) return;
+  const data = new FormData(form), p = state.editorPerson;
+  state.personDirty = data.get('display') !== (p.display || '') || data.get('note') !== (p.note || '') || data.getAll('role').sort().join(',') !== heldRoles(p.role).sort().join(',');
+  $('button[type="submit"]',form).disabled = !state.personDirty;
+  $('[data-discard-person]',form).disabled = !state.personDirty;
+  $('#person-dirty-label').hidden = !state.personDirty;
+}
+async function refreshPeople({throwOnError = false, external = false, localContacts = false} = {}) {
   try {
-    const [response, roles] = await Promise.all([api('/people/directory'), api('/roles')]);
-    state.roles = roles;
-    state.directoryPeople = response.people || [];
-    state.directoryUnlinked = response.unlinked || [];
-    state.contactKinds = response.contact_kinds || [];
-    state.loaded.people = true;
-    state.invalidated.people = false;
-    renderDirectory();
-  } catch (error) {
-    if (throwOnError) throw error;
-    showNotice(`People not refreshed: ${error.message}`, 'error');
-  }
+    const [directory,roles] = await Promise.all([api('/people/directory'),api('/roles')]);
+    state.people = directory.people || []; state.unassigned = directory.unlinked || []; state.contactKinds = directory.contact_kinds || []; state.roles = roles;
+    state.loaded.people = true; state.invalidated.people = false; renderPeople();
+    if (state.personDirty) {
+      if (localContacts) {
+        const oldForm = $('#person-form'), draft = new FormData(oldForm), changed = !$('#person-external-change').hidden;
+        renderPersonEditor();
+        $('#person-form input[name="display"]').value = draft.get('display');
+        $('#person-form textarea[name="note"]').value = draft.get('note');
+        $$('#person-form input[name="role"]').forEach(b => {b.checked = draft.getAll('role').includes(b.value);});
+        markPersonDirty(); $('#person-external-change').hidden = !changed;
+      } else if (external) $('#person-external-change').hidden = false;
+    }
+    else renderPersonEditor();
+  } catch(error) { if(throwOnError) throw error; showNotice(`People not refreshed: ${error.message}`, 'error'); }
+}
+// Register expected events before the POST: the stream can beat the response.
+async function peoplePost(path, body, matches) {
+  const token = {matches, expires: Date.now()+10000}; state.ownEvents.push(token);
+  try { const result = await post(path,body); if(result?.conflict) throw new ApiError('Contact conflict',409,result); state.invalidated.home = true; state.invalidated.roles = true; return result; }
+  catch(error) { state.ownEvents = state.ownEvents.filter(t => t !== token); throw error; }
+}
+function handlePeopleEvent(event) {
+  let payload; try { payload = JSON.parse(event.data); } catch { payload = {}; }
+  state.ownEvents = state.ownEvents.filter(t => t.expires > Date.now());
+  const index = state.ownEvents.findIndex(t => t.matches(payload));
+  if(index >= 0) { state.ownEvents.splice(index,1); invalidateView('roles',refreshRoles); invalidateHome(); return; }
+  state.invalidated.people = true;
+  if(state.activeView === 'people') refreshPeople({external:true});
+  invalidateView('roles',refreshRoles); invalidateHome();
+}
+async function savePerson(form) {
+  if(!state.personDirty || form.dataset.saving) return;
+  const id = state.selectedPerson, data = new FormData(form);
+  const body = {id,display:data.get('display'),role:data.getAll('role').join(', '),note:data.get('note'),scopes:state.people.find(p => p.id === id)?.scopes || state.editorPerson.scopes || []};
+  form.dataset.saving = '1'; setFormBusy($('#person-editor'),true);
+  try {
+    const result = await peoplePost('/people/update',body,e => e.id === id && e.action === 'updated');
+    const person = result.person || result;
+    state.people = state.people.map(p => p.id === person.id ? person : p);
+    renderPeople();
+    if(state.selectedPerson === id) { state.personDirty = false; renderPersonEditor(); }
+    state.invalidated.roles = true; showNotice('Saved.');
+  } catch(error) { if(state.selectedPerson === id) { setFormBusy($('#person-editor'),false); markPersonDirty(); } showNotice(`Person not saved: ${error.message}`,'error'); }
+  finally { delete form.dataset.saving; }
+}
+async function createPerson(display = '') {
+  const p = await peoplePost('/people/create',{display},e => e.kind === 'person' && e.action === 'created');
+  state.personDirty = false; state.selectedPerson = (p.person || p).id; await refreshPeople(); $('#person-form input')?.focus(); return state.selectedPerson;
+}
+async function immediatePeople(path,body,match) {
+  const result = await peoplePost(path,body,match); await refreshPeople({localContacts:true}); state.invalidated.roles = true; return result;
+}
+function showContactClash(host,error) {
+  const payload = error.payload || {};
+  if(error.status !== 409 || !payload.conflict) { showNotice(error.message,'error'); return; }
+  const contact = payload.contact || state.people.flatMap(p => p.contacts || []).find(c => c.value === $('[data-contact-value],input[name="value"]',host)?.value);
+  const status = $('.contact-status',host);
+  const owner = !payload.existing_person_id ? 'Unassigned' : payload.existing_person_display && payload.existing_person_display !== payload.existing_person_id ? payload.existing_person_display : personName(state.people.find(p => p.id === payload.existing_person_id));
+  status.innerHTML = `Already belongs to ${escapeHTML(owner)} <button type="button" class="button button-quiet" data-clash-move="${escapeHTML(contact?.id || '')}">Move it here</button>`;
+}
+async function updateContact(row) {
+  const personId = state.selectedPerson;
+  const id = row.dataset.contactId, c = contactsOf(state.editorPerson).find(c => c.id === id); if(!c || row.dataset.saving) return;
+  const kind = $('[data-contact-kind]',row).value, value = $('[data-contact-value]',row).value;
+  if(kind === c.kind && value === (c.raw_value || c.value)) return;
+  const attempt = JSON.stringify([kind,value]);
+  if(row.dataset.lastAttempt === attempt) return;
+  row.dataset.lastAttempt = attempt; row.dataset.saving = '1';
+  try {
+    const result = await peoplePost('/people/contact/update',{contact_id:id,...(kind !== c.kind ? {kind} : {}),value},e => e.contact_id === id && e.action === 'updated');
+    const updated = result.contact;
+    if(state.editorPerson?.id === personId) state.editorPerson.contacts = state.editorPerson.contacts.map(c => c.id === id ? updated : c);
+    const p = state.people.find(p => p.id === personId);
+    if(p) p.contacts = p.contacts.map(c => c.id === id ? updated : c);
+    $('[data-contact-value]',row).value = updated.raw_value || updated.value;
+    $('.contact-status',row).textContent = 'Saved'; setTimeout(() => { if(row.isConnected) $('.contact-status',row).textContent = ''; },2000); renderPeople();
+  } catch(error) { showContactClash(row,error); }
+  finally { delete row.dataset.saving; }
+}
+async function syncPeopleFromInkbox() {
+  try { await post('/people/sync',{}); await refreshPeople({external:true}); invalidateHome(); showNotice('Refreshed from Inkbox.'); } catch(error) { showNotice(error.message,'error'); }
 }
 
-// labels and hints for contact types come from the API (people directory), not from here
-const contactKind = kind => (state.contactKinds || []).find(k => k.kind === kind) || { kind, label: kind, hint: '' };
-const CONTACT_LABELS = new Proxy({}, { get: (_, kind) => contactKind(kind).label });
-const CONTACT_PLACEHOLDERS = new Proxy({}, { get: (_, kind) => contactKind(kind).hint });
-
-function _directoryPersonOptions(excludeId) {
-  return (state.directoryPeople || [])
-    .filter(person => person.id !== excludeId)
-    .map(person => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.display || person.id)}</option>`)
-    .join('');
-}
-
-
-function _contactRow(contact) {
-  const label = CONTACT_LABELS[contact.kind] || contact.kind;
-  return `<li class="contact-row" data-contact-id="${escapeHTML(contact.id)}">
-    <span class="contact-kind">${escapeHTML(label)}</span>
-    <span class="contact-value">${escapeHTML(contact.raw_value || contact.value)}</span>
-    <button class="button button-quiet contact-remove" type="button" data-contact-id="${escapeHTML(contact.id)}" aria-label="Remove this ${escapeHTML(label)} contact">Remove</button>
-  </li>`;
-}
-
-function renderDirectory() {
-  const term = ($('#directory-search')?.value || '').toLowerCase();
-  const matches = value => String(value || '').toLowerCase().includes(term);
-  const people = (state.directoryPeople || []).filter(person =>
-    !term || matches(person.display) || matches(person.id) || matches(person.role) ||
-    (person.contacts || []).some(c => matches(c.value)));
-  const unlinked = (state.directoryUnlinked || []).filter(c => !term || matches(c.value) || matches(c.kind));
-
-  const peopleHTML = people.length ? people.map(person => {
-    const options = _directoryPersonOptions(person.id);
-    // a name is the person's display name above, not a way of reaching them
-    const reachable = (person.contacts || []).filter(c => c.kind !== 'name');
-    const contacts = reachable.map(c => _contactRow(c)).join('')
-      || '<li class="empty-state">No contacts yet.</li>';
-    return `<article class="home-card person-card" data-person-id="${escapeHTML(person.id)}">
-      <div class="person-card-head">
-        <label class="person-field">Name
-          <input class="person-display" data-person-id="${escapeHTML(person.id)}" value="${escapeHTML(person.display)}" placeholder="Name"></label>
-        <fieldset class="person-roles"><legend>Roles</legend>${rolePicker(person.role, 'person-role')}</fieldset>
-        <button class="button button-quiet person-save" type="button" data-person-id="${escapeHTML(person.id)}">Save</button>
-        <button class="button button-danger person-delete" type="button" data-person-id="${escapeHTML(person.id)}">Delete</button>
-      </div>
-      ${person.effective_scopes && person.effective_scopes.length ? `<p class="muted">Can use without asking: ${person.effective_scopes.map(escapeHTML).join(', ')}</p>` : ''}
-      <textarea class="person-note" data-person-id="${escapeHTML(person.id)}" placeholder="Note" aria-label="Note">${escapeHTML(person.note || '')}</textarea>
-      <h4 class="contact-heading">Contacts</h4>
-      <ul class="contact-list">${contacts}</ul>
-      <form class="contact-add-form" data-person-id="${escapeHTML(person.id)}">
-        <select class="contact-add-kind" aria-label="Type of contact">
-          ${(state.contactKinds || []).filter(k => k.addable).map(k => `<option value="${escapeHTML(k.kind)}">${escapeHTML(k.label)}</option>`).join('')}
-        </select>
-        <input class="contact-add-value" placeholder="${escapeHTML(((state.contactKinds || []).find(k => k.addable) || {}).hint || '')}" aria-label="New contact" required>
-        <button class="button button-quiet" type="submit">Add contact</button>
-      </form>
-      <details class="person-advanced"><summary>Move a contact or merge a duplicate</summary>
-        ${reachable.length ? `<form class="contact-move-form">
-          <span>Move</span>
-          <select class="contact-move-which" aria-label="Contact to move">${reachable.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML((CONTACT_LABELS[c.kind] || c.kind) + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select>
-          <span>to</span>
-          <select class="contact-move-target" aria-label="Person to move it to"><option value="">nobody (leave it unassigned)</option>${options}</select>
-          <button class="button button-quiet" type="submit">Move</button>
-        </form>` : ''}
-        <form class="link-form" data-person-id="${escapeHTML(person.id)}">
-          <span>This person is a duplicate of</span>
-          <select class="link-target" aria-label="Person to merge into"><option value="">choose a person</option>${options}</select>
-          <button class="button button-quiet" type="submit">Merge into them</button>
-        </form>
-      </details>
-    </article>`;
-  }).join('') : '<div class="empty-state">No people yet. Add one below.</div>';
-
-  const unlinkedHTML = unlinked.length ? `<div class="unlinked-list"><h3>Contacts not assigned to anyone</h3><ul class="contact-list">
-    ${unlinked.map(c => `<li class="contact-row" data-contact-id="${escapeHTML(c.id)}">
-      <span class="contact-kind">${escapeHTML(CONTACT_LABELS[c.kind] || c.kind)}</span>
-      <span class="contact-value">${escapeHTML(c.value)}</span>
-      <select class="contact-assign" data-contact-id="${escapeHTML(c.id)}" aria-label="Assign to a person">
-        <option value="">Assign to…</option>
-        ${_directoryPersonOptions(null)}
-      </select>
-      <button class="button button-quiet contact-remove" type="button" data-contact-id="${escapeHTML(c.id)}">Delete</button>
-    </li>`).join('')}
-  </ul></div>` : '';
-
-  $('#contact-directory').setAttribute('aria-busy', 'false');
-  $('#contact-directory').innerHTML =
-    `<form id="add-person-form" class="add-person-form"><input id="add-person-name" placeholder="New person's name" aria-label="New person's name" required>
-       <button class="button button-primary" type="submit">Create person</button></form>` +
-    peopleHTML + unlinkedHTML;
-}
-
-async function createPersonFromDirectory(event) {
-  event.preventDefault();
-  const input = $('#add-person-name');
-  const display = input.value.trim();
-  if (!display) return;
-  await post('/people/create', { display });
-  input.value = '';
-  await refreshDirectory();
-  showNotice(`Created ${display}.`);
-}
-
-async function savePersonFromDirectory(personId) {
-  const card = document.querySelector(`.person-card[data-person-id="${CSS.escape(personId)}"]`);
-  if (!card) return;
-  const display = card.querySelector('.person-display').value.trim();
-  const role = [...card.querySelectorAll('input[name="person-role"]:checked')].map(box => box.value).join(', ');
-  const note = card.querySelector('.person-note').value;
-  await post('/people/update', { id: personId, display, role, note });
-  await refreshDirectory();
-  showNotice('Saved.');
-}
-
-async function deletePersonFromDirectory(personId) {
-  if (!window.confirm('Delete this person? Every contact of theirs is removed too.')) return;
-  await post('/people/remove', { id: personId });
-  await refreshDirectory();
-  showNotice('Person deleted.');
-}
-
-async function addContactFromDirectory(personId, kind, value) {
-  const result = await post('/people/contact/add', { person_id: personId, kind, value });
-  if (result.conflict) {
-    showNotice(`That contact already belongs to someone else (person ${result.existing_person_id}). Use link or move instead.`, 'error', 8000);
-    return;
-  }
-  await refreshDirectory();
-  showNotice('Contact added.');
-}
-
-async function moveContactFromDirectory(contactId, personId) {
-  await post('/people/contact/move', { contact_id: contactId, person_id: personId || null });
-  await refreshDirectory();
-  showNotice(personId ? 'Contact moved.' : 'Contact unlinked.');
-}
-
-async function removeContactFromDirectory(contactId) {
-  await post('/people/contact/remove', { contact_id: contactId });
-  await refreshDirectory();
-  showNotice('Contact removed.');
-}
-
-async function linkPeopleFromDirectory(mergeId, keepId) {
-  await post('/people/link', { keep_id: keepId, merge_id: mergeId });
-  await refreshDirectory();
-  showNotice('People linked.');
-}
 
 // -- Scopes page: every scope, grouped by system, read-only -------------------
 
@@ -879,9 +691,9 @@ function openRoleEditor(role = { name: '', note: '', scopes: [], __new: true }) 
   const host = role.__new ? document.createElement('div') : $(`[data-role-name="${CSS.escape(role.name)}"]`);
   if (role.__new) { host.className = 'role-card'; $('#roles-list').prepend(host); }
   const selected = new Set(role.scopes || []);
-  host.innerHTML = `<form class="role-editor">
+  host.innerHTML = `<form class="role-editor" data-original-name="${escapeHTML(role.__new ? '' : role.name)}">
     <div class="editor-grid">
-      <label class="field">Role name<input name="name" required value="${escapeHTML(role.name)}" ${role.__new ? '' : 'readonly'}></label>
+      <label class="field">Role name<input name="name" required value="${escapeHTML(role.name)}" ></label>
       <label class="field">Note<textarea name="note" placeholder="Who this role is for">${escapeHTML(role.note || '')}</textarea></label>
     </div>
     <div class="scope-groups">${renderScopeGroups(selected)}</div>
@@ -899,6 +711,8 @@ async function saveRole(form) {
   if (!body.name) return showNotice('A role name is required.', 'error');
   setFormBusy(form, true);
   try {
+    const original = form.dataset.originalName;
+    if (original && original !== body.name) await post('/roles/rename', { name: original, new_name: body.name });
     await post('/roles', body);
     await refreshRoles();
     showNotice(`Saved ${body.name}. Everyone with this role is now updated.`);
@@ -1253,18 +1067,16 @@ function connectEvents() {
   source.addEventListener('request.created', handleRequestEvent);
   source.addEventListener('request.state_changed', handleRequestEvent);
   source.addEventListener('permissions.changed', () => {
-    invalidateView('permissions', refreshPermissions);
     invalidateView('roles', refreshRoles);
-    invalidateView('people', refreshDirectory);
+    invalidateView('people', () => refreshPeople({external:true}));
     invalidateView('scopes', refreshScopesBreakdown);
     invalidateHome();
   });
   source.addEventListener('people.synced', () => {
-    invalidateView('permissions', refreshPermissions);
-    invalidateView('people', refreshDirectory);
+    invalidateView('people', () => refreshPeople({external:true}));
     invalidateHome();
   });
-  source.addEventListener('people.changed', () => invalidateView('people', refreshDirectory));
+  source.addEventListener('people.changed', handlePeopleEvent);
   source.addEventListener('health.changed', () => { invalidateView('health', refreshHealth); invalidateHome(); });
   source.addEventListener('settings.changed', () => invalidateView('settings', refreshSettings));
   source.addEventListener('schedules.changed', () => invalidateHome());
@@ -1364,7 +1176,7 @@ document.addEventListener('click', event => {
     if (!note.hidden) $('textarea', note).focus();
   }
   const personButton = event.target.closest('[data-person-key]');
-  if (personButton) { state.selectedPerson = personButton.dataset.personKey; renderPeople(); }
+  if (personButton) { state.selectedPerson = personButton.dataset.personKey; state.personDirty = false; renderPeople(); renderPersonEditor(); }
   const editRole = event.target.closest('[data-edit-role]');
   if (editRole) openRoleEditor(state.roles.find(role => role.name === editRole.closest('[data-role-name]').dataset.roleName));
   const cancelRole = event.target.closest('[data-cancel-role]');
@@ -1397,16 +1209,8 @@ document.addEventListener('click', event => {
 });
 
 async function peopleForSearch() {
-  // The Roles page does not otherwise load people (only Permissions does); fetch
-  // once, lazily, the first time someone searches from here so the suggestion list
-  // has something to search over without a frontend copy of the roster.
-  if (!state.people || !state.people.length) {
-    try {
-      const peopleResponse = await api('/people');
-      state.people = peopleResponse.people || [];
-    } catch { /* fall through to free entry, which still works without this */ }
-  }
-  return state.people || [];
+  try { return (await api('/people')).people || []; }
+  catch { return []; }
 }
 
 document.addEventListener('input', event => {
@@ -1469,16 +1273,7 @@ document.addEventListener('change', event => {
     if (setting.kind === 'bool') event.target.closest('.setting-toggle').querySelector('span:last-child').textContent = value ? 'On' : 'Off';
     saveSetting(setting, value);
   }
-  if (event.target.matches('#person-form input[name="role"], #person-form input[name="scopes"]')) {
-    const form = event.target.form;
-    const current = state.people.find(person => person.key === state.selectedPerson) || { __new: true };
-    const data = new FormData(form);
-    renderPersonEditor({
-      ...current,
-      __new: !state.selectedPerson,
-      key: data.get('key'), person: data.get('person'), role: data.getAll('role').join(', '), note: data.get('note'), scopes: data.getAll('scopes'),
-    });
-  }
+
 });
 
 document.addEventListener('input', event => {
@@ -1498,7 +1293,7 @@ document.addEventListener('input', event => {
 
 document.addEventListener('keydown', event => {
   if (event.key === '?' && !isTypingTarget(event.target)) { event.preventDefault(); $('#shortcuts-dialog').showModal(); return; }
-  if (event.key === '/' && state.activeView === 'permissions' && !isTypingTarget(event.target)) { event.preventDefault(); $('#permission-search').focus(); return; }
+  if (event.key === '/' && state.activeView === 'people' && !isTypingTarget(event.target)) { event.preventDefault(); $('#people-search').focus(); return; }
   if (isTypingTarget(event.target) || $('dialog[open]')) return;
   if (state.activeView !== 'requests') return;
   if (event.key === 'j') { event.preventDefault(); moveWaiting(1); }
@@ -1510,50 +1305,54 @@ document.addEventListener('keydown', event => {
   }
 });
 
-$('#permission-search').addEventListener('input', event => { state.search = event.target.value; renderPeople(); });
-$('#directory-search').addEventListener('input', renderDirectory);
-
-document.addEventListener('submit', event => {
-  if (event.target.id === 'add-person-form') { createPersonFromDirectory(event); return; }
-  if (event.target.matches('.contact-add-form')) {
-    event.preventDefault();
-    const form = event.target;
-    const personId = form.dataset.personId;
-    const kind = form.querySelector('.contact-add-kind').value;
-    const value = form.querySelector('.contact-add-value').value.trim();
-    if (value) addContactFromDirectory(personId, kind, value);
-    return;
-  }
-  if (event.target.matches('.contact-move-form')) {
-    event.preventDefault();
-    const form = event.target;
-    moveContactFromDirectory(form.querySelector('.contact-move-which').value, form.querySelector('.contact-move-target').value);
-    return;
-  }
-  if (event.target.matches('.link-form')) {
-    event.preventDefault();
-    const form = event.target;
-    const mergeId = form.dataset.personId;
-    const keepId = form.querySelector('.link-target').value;
-    if (keepId) linkPeopleFromDirectory(mergeId, keepId);
+$('#people-search').addEventListener('input',event => {state.search = event.target.value; renderPeople();});
+$('#add-person').addEventListener('click',() => createPerson().catch(e => showNotice(e.message,'error')));
+document.addEventListener('input',event => { if(event.target.closest('#person-form')) markPersonDirty(); });
+document.addEventListener('change',event => {
+  if(event.target.closest('#person-form')) markPersonDirty();
+  if(event.target.matches('[data-contact-kind], #contact-add-form select')) {
+    const row = event.target.closest('.person-contact'); $('input',row).placeholder = contactKind(event.target.value).hint;
   }
 });
-
-document.addEventListener('click', event => {
-  if (event.target.matches('.person-save')) savePersonFromDirectory(event.target.dataset.personId);
-  else if (event.target.matches('.person-delete')) deletePersonFromDirectory(event.target.dataset.personId);
-  else if (event.target.matches('.contact-remove')) removeContactFromDirectory(event.target.dataset.contactId);
+document.addEventListener('focusout',event => { if(event.target.matches('[data-contact-value], [data-contact-kind]')) updateContact(event.target.closest('.person-contact')); });
+document.addEventListener('keydown',event => {
+  if(state.activeView !== 'people') return;
+  if((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if($('#person-form')) savePerson($('#person-form')); }
+  if(event.target.matches('[data-contact-value], [data-contact-kind]')) {
+    const row = event.target.closest('.person-contact');
+    if(event.key === 'Enter') {event.preventDefault(); updateContact(row);}
+    if(event.key === 'Escape') {event.preventDefault(); const c = contactsOf(state.editorPerson).find(c => c.id === row.dataset.contactId); $('[data-contact-value]',row).value = c.raw_value || c.value; $('[data-contact-kind]',row).value = c.kind; $('.contact-status',row).textContent = ''; delete row.dataset.lastAttempt;}
+  } else if(event.key === 'Escape' && state.personDirty) {event.preventDefault(); renderPersonEditor();}
+});
+document.addEventListener('submit',async event => {
+  const form = event.target; if(!['contact-add-form','contact-move-form','person-merge-form'].includes(form.id)) return;
+  event.preventDefault(); const data = new FormData(form), id = state.selectedPerson;
+  try {
+    if(form.id === 'contact-add-form') await immediatePeople('/people/contact/add',{person_id:id,kind:data.get('kind'),value:data.get('value')},e => (e.person_id === id && e.action === 'added') || e.action === 'conflict');
+    if(form.id === 'contact-move-form') {const contact_id = data.get('contact_id'); await immediatePeople('/people/contact/move',{contact_id,person_id:data.get('person_id') || null},e => e.contact_id === contact_id && e.action === 'moved');}
+    if(form.id === 'person-merge-form') { const keep_id = data.get('keep_id'); if(!keep_id) return; await peoplePost('/people/link',{keep_id,merge_id:id},e => e.merge_id === id && e.action === 'linked'); state.personDirty = false; state.selectedPerson = keep_id; await refreshPeople(); }
+  } catch(error) { if(form.id === 'contact-add-form') showContactClash(form,error); else showNotice(error.message,'error'); }
+});
+document.addEventListener('click',async event => {
+  const button = event.target.closest('button'); if(!button) return;
+  const row = button.closest('[data-contact-id]'), contact_id = row?.dataset.contactId;
+  try {
+    if(button.matches('[data-list-mode]')) {
+      const unassigned = button.dataset.listMode === 'unassigned'; $('.people-pane').dataset.mode = button.dataset.listMode;
+      $$('[data-list-mode]').forEach(b => b.setAttribute('aria-pressed',String(b === button))); if(unassigned) $('#unassigned-block').open = true;
+    }
+    if(button.matches('[data-discard-person],[data-reload-person]')) {state.personDirty = false; renderPersonEditor();}
+    if(button.matches('[data-assign]')) await immediatePeople('/people/contact/move',{contact_id,person_id:state.selectedPerson},e => e.contact_id === contact_id && e.action === 'moved');
+    if(button.matches('[data-new-contact-person]')) { const c = state.unassigned.find(c => c.id === contact_id); const id = await createPerson(c.raw_value || c.value); await immediatePeople('/people/contact/move',{contact_id,person_id:id},e => e.contact_id === contact_id && e.action === 'moved'); }
+    if(button.matches('[data-remove-contact],[data-delete-unassigned]')) {
+      if(button.matches('[data-delete-unassigned]') && !confirm('Delete this contact? It will reappear on the next sync if seen again.')) return;
+      await immediatePeople('/people/contact/remove',{contact_id},e => e.contact_id === contact_id && e.action === 'removed');
+    }
+    if(button.matches('[data-clash-move]')) {const cid = button.dataset.clashMove; if(!cid) return showNotice('Refresh the page to find this contact.','error'); await immediatePeople('/people/contact/move',{contact_id:cid,person_id:state.selectedPerson},e => e.contact_id === cid && e.action === 'moved');}
+    if(button.matches('[data-delete-person]')) { const id = state.selectedPerson; if(!confirm('Delete person? Their contacts become unassigned.')) return; await peoplePost('/people/remove',{id},e => e.id === id && e.action === 'deleted'); state.selectedPerson = null; state.personDirty = false; await refreshPeople(); }
+  } catch(error) {showNotice(error.message,'error');}
 });
 
-document.addEventListener('change', event => {
-  if (event.target.matches('.contact-add-kind')) event.target.form.querySelector('.contact-add-value').placeholder = CONTACT_PLACEHOLDERS[event.target.value] || '';
-  else if (event.target.matches('.contact-assign')) moveContactFromDirectory(event.target.dataset.contactId, event.target.value);
-});
-$('#add-person').addEventListener('click', () => { state.selectedPerson = null; renderPersonEditor({ key: '', person: '', role: '', scopes: [], note: '', __new: true }); $('#person-editor input').focus(); });
-$('#person-editor').addEventListener('click', event => {
-  if (event.target.closest('[data-cancel-person]')) renderPeople();
-  if (event.target.closest('[data-delete-person]')) deletePerson(state.selectedPerson);
-});
 $('#sync-people')?.addEventListener('click', syncPeopleFromInkbox);
 $('#add-role')?.addEventListener('click', () => openRoleEditor());
 $('#add-schedule')?.addEventListener('click', () => openScheduleEditor());

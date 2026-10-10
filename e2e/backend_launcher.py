@@ -1,6 +1,6 @@
 """Launches a real console backend for the e2e check.
 
-Imports the ACTUAL console package from ~/blatbot-console-restyle (inkbox_claude.console
+Imports the ACTUAL console package from the backend working copy (inkbox_claude.console
 and inkbox_claude.gate) and mounts its real routes via routes.register(app, gateway) --
 no bypass, no test switch added to that package. The gate/tailnet/cors checks in
 access.py run exactly as they do in production; this script only supplies a throwaway
@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
-BACKEND_REPO = Path(os.environ.get("E2E_BACKEND_REPO", str(Path.home() / "blatbot-integration")))
+BACKEND_REPO = Path(os.environ.get("E2E_BACKEND_REPO", str(Path.home() / "blatbot/worktrees/people-page")))
 sys.path.insert(0, str(BACKEND_REPO))
 
 from aiohttp import web  # noqa: E402
@@ -129,6 +129,13 @@ def _seed(store: Store) -> None:
     store.set_trust("dana.ruiz@example.com", person="Dana Ruiz", role="",
                      scopes=["inbox_read"], note="Scoped directly, no role")
 
+    sam = store.create_person(display="Sam Parker", role="read-only", scopes=[], note="Sample record")
+    store.upsert_contact("email", "sam@example.com", person_id=sam["id"], source="seed")
+    store.upsert_contact("phone", "5550100001", person_id=sam["id"], source="seed")
+    other = store.create_person(display="Alex Morgan", role="ops", scopes=[], note="Other sample")
+    store.upsert_contact("email", "alex@example.com", person_id=other["id"], source="seed")
+    store.upsert_contact("email", "unassigned@example.com", source="seed")
+
     task = store.create_task("Investigate email bounce", participants=["priya.nair@example.com"])
     task_id = task["id"]
     store.task_event(task_id, "note", "Created by e2e seed data", chat_id="seed-chat")
@@ -160,6 +167,8 @@ async def run(host: str, port: int, allowed_origins: str, db_path: str) -> None:
     gateway = FakeGateway(store)
 
     app = web.Application()
+    # Fake identity image: this harness must never fetch an external identity.
+    routes._avatar_cache.update(at=time.time(), body=b'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#030411"/></svg>', type="image/svg+xml")
     routes.register(app, gateway)
 
     runner = web.AppRunner(app)

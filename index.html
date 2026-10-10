@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#00010d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css">
+  <link rel="stylesheet" href="/static/console.css?v=people-page">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -20,7 +20,6 @@
     <nav aria-label="Console sections">
       <a href="/console/" data-route="home" aria-current="page">Home</a>
       <a href="/console/requests" data-route="requests">Requests <span id="nav-waiting-count" class="nav-count" hidden></span></a>
-      <a href="/console/permissions" data-route="permissions">Permissions</a>
       <a href="/console/people" data-route="people">People</a>
       <a href="/console/roles" data-route="roles">Roles</a>
       <a href="/console/scopes" data-route="scopes">Scopes</a>
@@ -34,7 +33,6 @@
       <select id="mobile-route" aria-label="Console page">
         <option value="/console/">Home</option>
         <option value="/console/requests">Requests</option>
-        <option value="/console/permissions">Permissions</option>
         <option value="/console/people">People</option>
         <option value="/console/roles">Roles</option>
         <option value="/console/scopes">Scopes</option>
@@ -98,32 +96,41 @@
       </details>
     </section>
 
-    <section id="permissions" class="section" data-view="permissions" aria-labelledby="permissions-title" hidden>
+    <section id="people" class="section" data-view="people" aria-labelledby="people-title" hidden>
       <div class="section-heading">
         <div>
-          <h2 id="permissions-title">People &amp; permissions</h2>
-          <p class="section-summary">Role scopes run automatically. Everything else interrupts you.</p>
+          <h2 id="people-title">People</h2>
+          <p class="section-summary">People get roles and contacts. Roles determine what can happen without asking.</p>
         </div>
         <div class="heading-actions">
           <label class="search-field">
             <span class="visually-hidden">Search people and scopes</span>
             <span aria-hidden="true">/</span>
-            <input id="permission-search" type="search" placeholder="Find person or scope" autocomplete="off">
+            <input id="people-search" type="search" placeholder="Find person or scope" autocomplete="off">
           </label>
           <button id="sync-people" class="button button-quiet" type="button">Refresh from Inkbox</button>
           <button id="add-person" class="button button-primary" type="button">Add person</button>
         </div>
       </div>
-      <p class="inline-guidance">Role scopes and who holds them are managed on the <a href="/console/roles" data-route="roles">Roles page</a>.
-        <span id="people-last-sync" class="muted"></span></p>
+      <p class="inline-guidance">Role scopes are managed on the <a href="/console/roles" data-route="roles">Roles page</a>.</p>
 
-      <div class="permissions-layout">
+      <div class="people-layout">
         <div class="people-pane">
-          <div class="pane-label"><span>People</span><span id="people-count">—</span></div>
-          <div id="people-list" class="people-list" role="listbox" aria-label="People"></div>
+          <div class="people-switch" role="group" aria-label="People list">
+            <button class="button button-quiet" type="button" data-list-mode="people" aria-pressed="true">People</button>
+            <button class="button button-quiet" type="button" data-list-mode="unassigned" aria-pressed="false">Unassigned (<span id="switch-unassigned-count">0</span>)</button>
+          </div>
+          <div id="people-records">
+            <div class="pane-label"><span>People</span><span id="people-count">—</span></div>
+            <div id="people-list" class="people-list" role="listbox" aria-label="People"></div>
+          </div>
+          <details id="unassigned-block">
+            <summary>Unassigned contacts (<span id="unassigned-count">0</span>)</summary>
+            <div id="unassigned-list"></div>
+          </details>
         </div>
         <div id="person-editor" class="editor-pane">
-          <div class="empty-state">Select a person to inspect their permissions.</div>
+          <div class="empty-state">Select a person</div>
         </div>
       </div>
     </section>
@@ -140,19 +147,6 @@
         </div>
       </div>
       <div id="roles-list" class="roles-list" aria-busy="true"></div>
-    </section>
-
-    <section id="people" class="section" data-view="people" aria-labelledby="directory-title" hidden>
-      <div class="section-heading">
-        <div><h2 id="directory-title">People</h2>
-          <p class="section-summary">One entry per person. Their contacts (phone, email, Telegram, name) live inside that one entry; permissions are managed on Roles and Permissions.</p></div>
-        <div class="heading-actions">
-          <label class="search-field"><span class="visually-hidden">Search contacts</span>
-            <input id="directory-search" type="search" placeholder="Find a person or contact" autocomplete="off"></label>
-        </div>
-      </div>
-      <p class="inline-guidance">Contacts are only ever grouped by an explicit link, never because two names look alike. An unlinked contact stays its own entry until attached or promoted to a person.</p>
-      <div id="contact-directory" class="roles-list" aria-live="polite" aria-busy="true"></div>
     </section>
 
     <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
@@ -266,6 +260,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js"></script>
+  <script type="module" src="/static/console.js?v=people-page"></script>
 </body>
 </html>

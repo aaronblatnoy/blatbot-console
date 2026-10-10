@@ -1,251 +1,236 @@
-"""Headless Playwright checks against the real console frontend + real backend
-console routes. Prints one PASS/FAIL line per assertion; exits non-zero on any FAIL.
-Never opens/foregrounds a browser window (headless only).
-"""
-
-from __future__ import annotations
-
+"""Headless checks of the unified People page against a throwaway real backend."""
 import sys
-import time
-from typing import List, Tuple
+from pathlib import Path
+from playwright.sync_api import sync_playwright, expect
 
-from playwright.sync_api import sync_playwright
-
-FRONTEND_ORIGIN = sys.argv[1]           # e.g. http://127.0.0.1:8793
-BACKEND_TAILNET_BASE = sys.argv[2]      # e.g. http://100.112.46.2:8781
-BACKEND_LOOPBACK_BASE = sys.argv[3]     # e.g. http://127.0.0.1:8781
-
-PAGES = [
-    ("Home", "/console/", "#home-title"),
-    ("Requests", "/console/requests", "#requests-title"),
-    ("Permissions", "/console/permissions", "#permissions-title"),
-    ("Roles", "/console/roles", "#roles-title"),
-    ("Tasks", "/console/tasks", "#tasks-title"),
-    ("Schedules", "/console/schedules", "#schedules-title"),
-    ("Health", "/console/health", "#health-title"),
-    ("Settings", "/console/settings", "#settings-title"),
-]
-
-results: List[Tuple[str, bool, str]] = []
+FRONTEND, BACKEND, LOOPBACK = sys.argv[1:4]
+SHOTS = Path.home() / 'scratch/people-page-shots'
+SHOTS.mkdir(parents=True, exist_ok=True)
+results = []
 
 
-def record(name: str, ok: bool, detail: str = "") -> None:
-    results.append((name, ok, detail))
-    print(f"{'PASS' if ok else 'FAIL'}: {name}" + (f" -- {detail}" if detail and not ok else ""))
-
-
-def main() -> int:
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
+def main():
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(viewport={'width': 1400, 'height': 900})
         page = context.new_page()
-        page.on("dialog", lambda d: d.accept())
+        page.on('dialog', lambda d: d.accept())
+        errors = []
+        page.on('pageerror', lambda e: errors.append(str(e)))
+        page.on('console', lambda m: errors.append(m.text) if m.type == 'error' and '409' not in m.text else None)
 
-        console_errors: List[str] = []
-        failed_requests: List[str] = []
-        page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
-        page.on("requestfailed", lambda req: failed_requests.append(f"{req.method} {req.url}"))
-        page.on("response", lambda resp: failed_requests.append(f"{resp.request.method} {resp.url} -> {resp.status}")
-                if resp.status >= 400 and "/console/api/" in resp.url else None)
+        def api(path, body=None):
+            url = BACKEND + '/console/api' + path
+            response = context.request.get(url) if body is None else context.request.post(url, data=body, headers={'Origin': FRONTEND})
+            assert response.ok, f'{path}: {response.status} {response.text()}'
+            return response.json()
 
-        # -- 1. every page loads with data, no console errors, no failed requests --
-        for name, path, heading_selector in PAGES:
-            console_errors.clear()
-            failed_requests.clear()
-            page.goto(f"{FRONTEND_ORIGIN}{path}", wait_until="networkidle")
-            page.wait_for_selector(heading_selector, timeout=5000)
-            time.sleep(0.3)  # let any trailing async render settle
-            has_content = page.evaluate(
-                """() => {
-                    const main = document.querySelector('#main');
-                    return main && main.textContent.trim().length > 40
-                        && !main.textContent.includes('Loading');
-                }"""
-            )
-            ok = has_content and not console_errors and not failed_requests
-            detail = f"content={has_content} console_errors={console_errors} failed_requests={failed_requests}"
-            record(f"page loads with data, no errors: {name}", ok, detail)
-
-        # -- 1b. the needs-you block links to the waiting request --
-        page.goto(f"{FRONTEND_ORIGIN}/console/", wait_until="networkidle")
-        page.wait_for_selector("#home-content .home-needs-you", timeout=5000)
-        needs_you_link = page.locator("#home-content .home-needs-you a")
-        try:
-            href = needs_you_link.get_attribute("href", timeout=2000)
-            has_link = bool(href) and href.endswith("/console/requests")
-        except Exception:
-            has_link = False
-        record("needs-you block links to the waiting request", has_link, f"href={href if has_link else None}")
-        if has_link:
-            needs_you_link.click()
-            page.wait_for_selector("#requests-title", timeout=5000)
-            record("needs-you link opens Requests", location := page.url.endswith("/console/requests"))
-
-        # -- 2. event stream connected --
-        page.goto(f"{FRONTEND_ORIGIN}/console/", wait_until="networkidle")
-        page.wait_for_function(
-            "() => document.querySelector('#stream-dot')?.className.includes('is-live')",
-            timeout=8000,
-        )
-        stream_ok = "is-live" in page.eval_on_selector("#stream-dot", "el => el.className")
-        record("event stream is connected", stream_ok)
-
-        # -- 2b. a task's ledger shows the events the API recorded for it --
-        page.goto(f"{FRONTEND_ORIGIN}/console/tasks", wait_until="networkidle")
-        page.wait_for_selector(".task-row", timeout=5000)
-        page.click(".task-row")
-        try:
-            page.wait_for_selector("#ledger-content .ledger-entry", timeout=5000)
-            entries = page.locator("#ledger-content .ledger-entry").count()
-        except Exception:
-            entries = 0
-        record("task ledger shows its recorded events", entries > 0, f"{entries} entries")
-        page.keyboard.press("Escape")
-
-        # -- 3. create a role, then delete it --
-        page.goto(f"{FRONTEND_ORIGIN}/console/roles", wait_until="networkidle")
-        page.wait_for_selector("#roles-list")
-        role_name = f"e2e-temp-role-{int(time.time())}"
-        page.click("#add-role")
-        page.fill(".role-editor input[name='name']", role_name)
-        page.check("input[name='scopes'][value='inbox_read']")
-        page.click(".role-editor button[type='submit']")
-        try:
-            page.wait_for_selector(f"[data-role-name='{role_name}']", timeout=5000)
-            created = True
-        except Exception:
-            created = False
-        record("create a role", created)
-
-        if created:
-            card = page.locator(f"[data-role-name='{role_name}']")
-            card.locator("[data-delete-role]").click()
+        def directory(): return api('/people/directory')
+        def person(name): return next(p for p in directory()['people'] if p['display'] == name)
+        def open_people():
+            page.goto(FRONTEND + '/console/people')
+            page.wait_for_selector('#people-list .person-row')
+            page.wait_for_function("document.querySelector('#stream-label').textContent === 'live'")
+        def select(name):
+            page.locator('.person-row', has=page.locator('.person-name', has_text=name)).click()
+            expect(page.locator('#person-form input[name=display]')).to_have_value(name)
+        def check(number, title, fn):
             try:
-                page.wait_for_selector(f"[data-role-name='{role_name}']", state="detached", timeout=5000)
-                deleted = True
-            except Exception:
-                deleted = False
-            record("delete that role", deleted)
-        else:
-            record("delete that role", False, "role was never created")
+                fn()
+                results.append(True)
+                print(f'PASS {number}. {title}', flush=True)
+            except Exception as e:
+                results.append(False)
+                print(f'FAIL {number}. {title}: {e}', flush=True)
+                page.screenshot(path=str(SHOTS / f'failure-{number}.png'), full_page=True)
+        def save():
+            page.locator('#person-form button[type=submit]').click()
+            expect(page.locator('#person-form button[type=submit]')).to_be_disabled()
+            expect(page.locator('#person-dirty-label')).to_be_hidden()
 
-        # -- 4. add a member to a role, then remove them --
-        page.goto(f"{FRONTEND_ORIGIN}/console/roles", wait_until="networkidle")
-        page.wait_for_selector("[data-role-name='ops']", timeout=5000)
-        member_key = "e2e-temp-member@example.com"
-        ops_card = page.locator("[data-role-name='ops']")
-        ops_card.locator("[data-member-input]").fill(member_key)
-        ops_card.locator("[data-add-member] button[type='submit']").click()
-        try:
-            page.wait_for_selector(f"[data-remove-member='{member_key}']", timeout=5000)
-            added = True
-        except Exception:
-            added = False
-        record("add a member to a role", added)
+        def one():
+            open_people(); expect(page.locator('#person-editor')).to_contain_text('Select a person'); select('Sam Parker')
+            assert page.locator('.person-row', has_text='Sam Parker').count() == 1
+            expect(page.locator('.person-row', has_text='Sam Parker')).to_contain_text('2 contacts')
+            assert page.locator('#person-contacts .person-contact').count() == 2
+            page.screenshot(path=str(SHOTS / 'people-desktop.png'))
+            page.locator('#unassigned-block').evaluate('(e) => e.open = true')
+            page.screenshot(path=str(SHOTS / 'people-unassigned.png'))
+        check(1, 'One person row, two contact fields and contact count', one)
 
-        if added:
-            page.locator(f"[data-remove-member='{member_key}']").click()
-            try:
-                page.wait_for_selector(f"[data-remove-member='{member_key}']", state="detached", timeout=5000)
-                removed = True
-            except Exception:
-                removed = False
-            record("remove that member", removed)
-        else:
-            record("remove that member", False, "member was never added")
+        def two():
+            page.locator('#person-form input[name=display]').fill('Sam Draft')
+            expect(page.locator('#person-form button[type=submit]')).to_be_enabled()
+            page.reload(); select('Sam Parker')
+            page.locator('#person-form input[name=display]').fill('Escape draft')
+            page.locator('#person-form input[name=display]').press('Escape')
+            expect(page.locator('#person-form input[name=display]')).to_have_value('Sam Parker')
+            page.locator('#person-form input[name=display]').fill('Sam Updated')
+            page.locator('#person-form input[name=display]').press('Control+s')
+            expect(page.locator('#person-form button[type=submit]')).to_be_disabled()
+            expect(page.locator('.person-row.is-selected')).to_contain_text('Sam Updated')
+            expect(page.locator('#person-form input[name=display]')).to_have_value('Sam Updated')
+        check(2, 'Name draft discarded on reload; saved rename keeps selection', two)
 
-        # -- 4b. create a schedule, pause it, then delete it --
-        page.goto(f"{FRONTEND_ORIGIN}/console/schedules", wait_until="networkidle")
-        page.wait_for_selector("#schedules-list")
-        schedule_title = f"e2e-temp-schedule-{int(time.time())}"
-        page.click("#add-schedule")
-        page.fill("#schedule-title", schedule_title)
-        page.fill("#schedule-prompt", "Say hello (this is only an e2e check, never actually run).")
-        # "once" (the default kind) needs a run_at; recurring only needs a cron expression,
-        # which is simpler for this check to fill in.
-        page.select_option("#schedule-kind", "recurring")
-        page.fill("#schedule-cron", "0 9 * * 1-5")
-        page.click("#schedule-form button[type='submit']")
-        try:
-            page.wait_for_function(
-                "title => [...document.querySelectorAll('.schedule-card h3')].some(h => h.textContent === title)",
-                arg=schedule_title,
-                timeout=5000,
-            )
-            schedule_created = True
-        except Exception:
-            schedule_created = False
-        record("create a schedule", schedule_created)
+        def three():
+            select('Sam Updated')
+            page.locator('#person-form input[value=ops]').check(); save()
+            expect(page.locator('.person-access')).to_contain_text('email_send')
+            sam = person('Sam Updated')
+            roles = api('/roles'); ops = next(r for r in roles if r['name'] == 'ops')
+            assert any(m.get('person') == 'Sam Updated' for m in ops['members'])
+            page.goto(FRONTEND + '/console/roles')
+            expect(page.locator('[data-role-name=ops] .role-members h4')).to_have_text(f"Members ({len(ops['members'])})")
+            open_people(); select('Sam Updated')
+        check(3, 'Role save updates effective scopes and Roles member count', three)
 
-        if schedule_created:
-            # A freshly created schedule is "proposed" (waiting on Aaron's approval of the
-            # request it raised), not "active" -- pause/resume only apply once active, so
-            # this only exercises delete, which schedules.py's action() allows in any state.
-            card = page.locator(".schedule-card", has=page.locator(f"h3:text-is('{schedule_title}')"))
-            card.locator("[data-schedule-action='delete']").click()
-            try:
-                page.wait_for_function(
-                    "title => ![...document.querySelectorAll('.schedule-card h3')].some(h => h.textContent === title)",
-                    arg=schedule_title,
-                    timeout=5000,
-                )
-                schedule_deleted = True
-            except Exception:
-                schedule_deleted = False
-            record("delete that schedule", schedule_deleted)
-        else:
-            record("delete that schedule", False, "schedule was never created")
+        def four():
+            row = page.locator('.person-contact', has=page.locator('input[data-contact-value][value="sam@example.com"]'))
+            row.locator('input').fill('sam.new@example.com'); row.locator('input').press('Enter')
+            expect(row.locator('.contact-status')).to_have_text('Saved')
+            page.reload(); select('Sam Updated')
+            row = page.locator('.person-contact', has=page.locator('input[data-contact-value][value="sam.new@example.com"]'))
+            row.locator('input').fill('alex@example.com'); row.locator('input').press('Enter')
+            expect(row.locator('.contact-status')).to_contain_text('Already belongs to Alex Morgan')
+            assert row.locator('.contact-status').inner_text().find(person('Alex Morgan')['id']) == -1
+            assert len(person('Sam Updated')['contacts']) == 2
+            assert any(c['value'] == 'alex@example.com' for c in person('Alex Morgan')['contacts'])
+            page.screenshot(path=str(SHOTS / 'contact-clash.png'))
+            row.locator('input').press('Escape')
+            expect(row.locator('input')).to_have_value('sam.new@example.com')
+        check(4, 'Contact Enter persists; clash names owner without deleting', four)
 
-        # -- 5. Refresh from Inkbox completes; people count + last-sync update --
-        page.goto(f"{FRONTEND_ORIGIN}/console/permissions", wait_until="networkidle")
-        page.wait_for_selector("#sync-people", timeout=5000)
-        before_count = page.inner_text("#people-count")
-        before_sync = page.inner_text("#people-last-sync")
-        page.click("#sync-people")
-        page.wait_for_function(
-            "() => document.querySelector('#sync-people') && !document.querySelector('#sync-people').disabled",
-            timeout=10000,
-        )
-        time.sleep(0.3)
-        after_count = page.inner_text("#people-count")
-        after_sync = page.inner_text("#people-last-sync")
-        sync_ok = (after_sync != before_sync) and ("never synced" not in after_sync)
-        record(
-            "Refresh from Inkbox completes; people count + last-sync update",
-            sync_ok,
-            f"before=({before_count!r},{before_sync!r}) after=({after_count!r},{after_sync!r})",
-        )
+        def five():
+            page.locator('#unassigned-block').evaluate('(e) => e.open = true')
+            page.locator('#person-form textarea[name=note]').fill('Draft while assigning')
+            before = int(page.locator('#unassigned-count').inner_text())
+            row = page.locator('.unassigned-row', has_text='unassigned@example.com')
+            row.locator('[data-assign]').click()
+            expect(page.locator('#person-contacts')).to_contain_text('Remove')
+            expect(page.locator('#person-contacts input[value="unassigned@example.com"]')).to_be_visible()
+            expect(page.locator('#unassigned-count')).to_have_text(str(before-1))
+            expect(page.locator('#person-form textarea[name=note]')).to_have_value('Draft while assigning')
+            page.locator('[data-discard-person]').click()
+        check(5, 'Assign immediately adds contact and lowers unassigned count', five)
 
+        def six():
+            p = api('/people/create', {'display':'Delete Sample'})
+            api('/people/contact/add',{'person_id':p['id'],'kind':'email','value':'delete@example.com'})
+            open_people(); select('Delete Sample'); page.locator('[data-delete-person]').click()
+            expect(page.locator('.person-row',has_text='Delete Sample')).to_have_count(0)
+            page.locator('#unassigned-block').evaluate('(e) => e.open = true')
+            expect(page.locator('#unassigned-list')).to_contain_text('delete@example.com')
+        check(6, 'Delete person leaves contacts unassigned', six)
+
+        def seven():
+            a = api('/people/create',{'display':'Merge Sample A','role':'ops'})
+            b = api('/people/create',{'display':'Merge Sample B','role':'read-only'})
+            api('/people/contact/add',{'person_id':a['id'],'kind':'email','value':'merge@example.com'})
+            open_people(); select('Merge Sample A'); page.locator('.person-advanced').evaluate('(e) => e.open = true')
+            page.locator('#person-merge-form select').select_option(b['id'])
+            page.locator('#person-merge-form button').click()
+            expect(page.locator('.person-row',has_text='Merge Sample A')).to_have_count(0)
+            expect(page.locator('.person-row',has_text='Merge Sample B')).to_have_count(1)
+            assert person('Merge Sample B')['role'] == 'read-only'
+            assert any(c['value'] == 'merge@example.com' for c in person('Merge Sample B')['contacts'])
+        check(7, 'Merge leaves one person and preserves target roles', seven)
+
+        def eight():
+            select('Sam Updated'); page.locator('#person-form input[name=display]').fill('Keep my draft')
+            second = context.new_page()
+            second.goto(FRONTEND + '/console/people'); second.wait_for_selector('.person-row')
+            second.locator('.person-row',has_text='Alex Morgan').click()
+            second.locator('#person-form textarea[name=note]').fill('Changed from second page')
+            second.locator('#person-form button[type=submit]').click()
+            expect(page.locator('#person-external-change')).to_be_visible()
+            expect(page.locator('#person-form input[name=display]')).to_have_value('Keep my draft')
+            expect(page.locator('#person-dirty-label')).to_be_visible()
+            second.close(); page.locator('[data-discard-person]').click()
+        check(8, 'Second page mutation preserves open draft and shows reload notice', eight)
+
+        def nine():
+            page.set_viewport_size({'width':400,'height':900}); select('Sam Updated')
+            page.locator('[data-list-mode=people]').click()
+            expect(page.locator('#people-records')).to_be_visible()
+            page.screenshot(path=str(SHOTS / 'people-mobile.png'),full_page=True)
+            page.locator('[data-list-mode=unassigned]').click()
+            expect(page.locator('#unassigned-list')).to_be_visible()
+            page.screenshot(path=str(SHOTS / 'unassigned-mobile.png'),full_page=True)
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            assert page.evaluate("""() => [...document.querySelectorAll('#people input, #people select, #people button, #people .person-row')].filter(e => e.getClientRects().length).every(e => e.getBoundingClientRect().right <= innerWidth + 1 && getComputedStyle(e).textOverflow !== 'ellipsis')""")
+            page.set_viewport_size({'width':1400,'height':900})
+        check(9, '400px: both list positions reachable, no clipping or horizontal scroll', nine)
+
+        def ten():
+            page.goto(FRONTEND + '/console/permissions'); expect(page.locator('#people-title')).to_be_visible()
+            page.wait_for_selector('.person-row'); assert page.locator('#permissions').count() == 0
+        check(10, 'Legacy permissions URL opens People', ten)
+
+        def eleven():
+            before = api('/roles'); old = next(r for r in before if r['name'] == 'read-only')
+            page.goto(FRONTEND + '/console/roles'); page.locator('[data-role-name="read-only"] [data-edit-role]').click()
+            page.locator('.role-editor input[name=name]').fill('reader')
+            page.screenshot(path=str(SHOTS / 'roles-edit.png'),full_page=True)
+            page.locator('.role-editor button[type=submit]').click()
+            expect(page.locator('[data-role-name=reader]')).to_be_visible()
+            new = next(r for r in api('/roles') if r['name'] == 'reader')
+            assert {m['key'] for m in new['members']} == {m['key'] for m in old['members']}
+            page.locator('[data-role-name=reader] [data-delete-role]').click()
+            expect(page.locator('[data-role-name=reader]')).to_have_count(0)
+            assert all('reader' not in p['role'].split(', ') for p in directory()['people'])
+        check(11, 'Role rename keeps members; deletion removes role from people', eleven)
+
+        def twelve():
+            errors.clear()
+            for name,path in [('Home',''),('Requests','requests'),('People','people'),('Roles','roles'),('Scopes','scopes'),('Tasks','tasks'),('Schedules','schedules'),('Health','health'),('Settings','settings')]:
+                page.goto(FRONTEND + '/console/' + path)
+                page.wait_for_function("""() => document.querySelector('#main [data-view]:not([hidden])')?.textContent.trim().length > 30""")
+                page.wait_for_timeout(300)
+            assert not errors, errors
+        check(12, 'No console errors on all nine pages', twelve)
+        def extras():
+            open_people(); select('Dana Ruiz')
+            direct = person('Dana Ruiz')['scopes']
+            page.locator('#person-form textarea[name=note]').fill('Keep direct grants')
+            save()
+            expect(page.locator('.person-access')).to_contain_text('plus 1 direct grants')
+            assert person('Dana Ruiz')['scopes'] == direct
+            select('Sam Updated')
+            page.locator('#contact-add-form input').fill('alex@example.com')
+            page.locator('#contact-add-form button[type=submit]').click()
+            expect(page.locator('#contact-add-form .contact-status')).to_contain_text('Already belongs to Alex Morgan')
+            page.locator('#contact-add-form [data-clash-move]').click()
+            expect(page.locator('#person-contacts input[value="alex@example.com"]')).to_be_visible()
+            assert not any(c['value'] == 'alex@example.com' for c in person('Alex Morgan')['contacts'])
+            page.locator('#add-person').click()
+            expect(page.locator('#person-form input[name=display]')).to_have_value('')
+            expect(page.locator('.person-row.is-selected')).to_contain_text('(unnamed)')
+            page.locator('#person-form input[name=display]').fill('Created Sample'); save()
+            page.locator('#contact-add-form input').fill('created@example.com')
+            page.locator('#contact-add-form button[type=submit]').click()
+            expect(page.locator('#person-contacts input[value="created@example.com"]')).to_be_visible()
+            row = page.locator('#person-contacts .person-contact').first
+            row.locator('select').select_option('other'); row.locator('select').press('Tab')
+            expect(row.locator('.contact-status')).to_have_text('Saved')
+            assert person('Created Sample')['contacts'][0]['kind'] == 'other'
+            page.locator('.person-advanced').evaluate('(e) => e.open = true')
+            page.locator('#contact-move-form select[name=contact_id]').select_option(person('Created Sample')['contacts'][0]['id'])
+            page.locator('#contact-move-form button').click()
+            expect(page.locator('#person-contacts')).to_contain_text('No contacts.')
+            page.locator('#unassigned-block').evaluate('(e) => e.open = true')
+            row = page.locator('.unassigned-row',has_text='created@example.com')
+            row.locator('[data-new-contact-person]').click()
+            expect(page.locator('#person-form input[name=display]')).to_have_value('created@example.com')
+            row = page.locator('#person-contacts .person-contact').first
+            row.locator('[data-remove-contact]').click()
+            expect(page.locator('#person-contacts')).to_contain_text('No contacts.')
+            response = context.request.get(LOOPBACK + '/console/api/overview')
+            assert response.status == 404
+            response = context.request.post(BACKEND + '/console/api/roles',data={'name':'forbidden','scopes':[]},headers={'Origin':'http://disallowed.example.test'})
+            assert response.status == 403
+        check('extra', 'Add clash move, create, type edit, unassign, new person, remove and access gate', extras)
         browser.close()
+    print(f'{sum(results)}/{len(results)} checks passed')
+    return 0 if all(results) else 1
 
-        # -- 6. cross-origin mutation from a disallowed origin is refused --
-        api_context = p.request.new_context()
-        resp = api_context.post(
-            f"{BACKEND_TAILNET_BASE}/console/api/roles",
-            headers={"Origin": "http://evil.example.test", "Content-Type": "application/json"},
-            data='{"name": "should-not-exist", "scopes": []}',
-        )
-        cross_origin_ok = resp.status == 403
-        record(
-            "cross-origin mutation from a disallowed origin is refused",
-            cross_origin_ok,
-            f"status={resp.status} body={resp.text()[:200]}",
-        )
-
-        # -- 7. same API returns 404 on 127.0.0.1 (non-tailnet peer) --
-        resp2 = api_context.get(f"{BACKEND_LOOPBACK_BASE}/console/api/overview")
-        loopback_ok = resp2.status == 404
-        record(
-            "same API returns 404 when called on 127.0.0.1",
-            loopback_ok,
-            f"status={resp2.status} body={resp2.text()[:200]}",
-        )
-        api_context.dispose()
-
-    failures = [r for r in results if not r[1]]
-    print(f"\n{len(results) - len(failures)}/{len(results)} checks passed")
-    return 1 if failures else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == '__main__': sys.exit(main())

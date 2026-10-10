@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-command end-to-end check for the Blatbot console: starts a real backend
-# (the real inkbox_claude.console routes from ~/blatbot-console-restyle, bound to
+# (the real inkbox_claude.console routes from the backend working copy, bound to
 # this box's Tailscale address) and the real frontend (this repo's static/ +
 # index.html, unmodified) on their own ports, runs the headless Playwright
 # checks, then shuts everything down. Exits non-zero on any check failure.
@@ -9,10 +9,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV="$HERE/.venv/bin/python"
+VENV="${E2E_PYTHON:-$HOME/scratch/pw-venv/bin/python}"
+export E2E_BACKEND_REPO="${E2E_BACKEND_REPO:-$HOME/blatbot/worktrees/people-page}"
 
-BACKEND_PORT="${E2E_BACKEND_PORT:-18881}"
-FRONTEND_PORT="${E2E_FRONTEND_PORT:-18893}"
+BACKEND_PORT="${E2E_BACKEND_PORT:-18794}"
+FRONTEND_PORT="${E2E_FRONTEND_PORT:-18795}"
 
 TAILNET_IP="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
 if [[ -z "$TAILNET_IP" ]]; then

@@ -39,9 +39,8 @@ is not how this frontend is run anymore.
 |---|---|
 | Home | What is waiting, what is running, recent activity, upcoming schedules |
 | Requests | Requests waiting on the owner, approved or rejected inline |
-| Permissions | Per person: what runs on its own and what still interrupts |
-| People | One entry per person with their contacts inside it; create, rename, tick roles, add, move and remove contacts, merge a duplicate; unassigned contacts listed separately |
-| Roles | Each role's scopes and members; the editor adds and removes scopes from a pick list grouped by system |
+| People | One row per person; Name, Roles and Note save together; contacts commit inline; unassigned contacts can be attached; effective scopes are read-only |
+| Roles | Each role's scopes and members; the editor renames the role and changes its note and scopes |
 | Scopes | The gate's decision tree, left to right: system, question, scopes, tools, and the roles holding each scope |
 | Tasks | The task ledger with each task's events |
 | Schedules | Approved schedules and their next runs |
@@ -197,54 +196,25 @@ repo.
 
 ## End-to-end check (e2e/)
 
-`e2e/` holds a rerunnable end-to-end check that exercises the REAL backend code (the
-actual `inkbox_claude.console` routes imported from `~/blatbot-console-restyle`, not a
-mock) against this repo's real, unmodified frontend files. It never touches live
-credentials, the real Inkbox API, or any real `gate.db` -- everything runs against a
-throwaway sqlite store in a temp directory and a fake Inkbox directory client with
-made-up people.
+Run `bash e2e/run.sh` from the console working copy. The harness starts the real
+backend routes against a throwaway SQLite store seeded with made-up people and a
+fake directory client. It never sends messages or fetches a real identity image.
+The frontend serves this checkout with API and event URLs set for the test run.
+Both processes stop on exit.
 
-```
-e2e/
-  backend_launcher.py   boots a real aiohttp app with the real console routes, a
-                         throwaway Store, a minimal stand-in gateway object, and a
-                         fake InkboxDirectoryClient; seeds roles/people/requests/tasks
-  frontend_server.py    serves THIS repo's index.html + static/ unmodified from its
-                         own port, except /static/config.js is generated on the fly
-                         (pointed at the run's backend) instead of editing the
-                         tracked config.js
-  check.py              headless Playwright (never a foregrounded browser) script:
-                         every page loads with data and no console/network errors;
-                         create+delete a role; add+remove a role member; "Refresh
-                         from Inkbox" updates the people count and last-sync time;
-                         the event stream connects; a cross-origin mutation from a
-                         non-allow-listed origin is refused; the API 404s on 127.0.0.1
-  run.sh                the one command: starts backend + frontend, runs check.py,
-                         tears everything down, exits non-zero on any failure
-  .venv/                 this harness's own venv (aiohttp, pyyaml, playwright +
-                         chromium) -- separate from the backend repo's uv-managed
-                         .venv, which has no pip and isn't meant to take extra deps
-```
+The Python environment defaults to `~/scratch/pw-venv/bin/python`; install
+`playwright`, `aiohttp`, `pyyaml`, `python-dotenv`, and Chromium there first.
+`E2E_PYTHON` overrides it. `E2E_BACKEND_REPO` defaults to the sibling backend
+working copy at `~/blatbot/worktrees/people-page`. The default backend and frontend
+ports are 18794 and 18795; `E2E_BACKEND_PORT` and `E2E_FRONTEND_PORT` override them.
+The backend binds to all interfaces and is reached through the machine's Tailscale
+address, preserving its access gate.
 
-Run it:
-
-```
-cd ~/blatbot-console/e2e
-./run.sh
-```
-
-This requires a Tailscale IPv4 address on the machine running it (`tailscale ip -4`);
-the backend binds to `0.0.0.0` on a fixed port so the SAME listener is reachable both
-at that Tailscale address (exercising the real `tailnet_gate` allow path, exactly as
-in production) and at `127.0.0.1` (exercising the real deny path -> 404), without
-weakening `access.py` in any way to make the check pass. If there is no Tailscale
-address, `run.sh` stops and says so rather than binding to loopback instead.
-
-`E2E_BACKEND_REPO` (env var, default `~/blatbot-console-restyle`) tells
-`backend_launcher.py` where to import `inkbox_claude` from if the backend repo ever
-moves. `E2E_BACKEND_PORT` / `E2E_FRONTEND_PORT` override the default ports (18881 /
-18893, deliberately uncommon so they don't collide with a dev server someone else has
-running locally on 8792/8793) if those are taken.
+`check.py` reports the twelve People acceptance checks, including drafts across
+event updates, contact clashes, merging, role renaming, the legacy permissions URL,
+mobile list switching, and errors across every console page. Screenshots go to
+`~/scratch/people-page-shots/`. `/console/permissions` is an alias for People;
+there is no separate Permissions page.
 
 ## Hard rules this frontend follows
 
@@ -264,8 +234,8 @@ running locally on 8792/8793) if those are taken.
   console's own API host, configured per deployment.
 - Works at 400px wide with no horizontal page scroll on the eight original pages
   (`document.documentElement.scrollWidth === clientWidth`, checked by script across
-  Home, Requests, Permissions, Roles, Tasks, Schedules, Health and Settings). The People
-  page was added later and has not been through that script; the Scopes page is a wide
+  Home, Requests, People, Roles, Tasks, Schedules, Health and Settings). The merged People
+  page also has a 400px acceptance check; the Scopes page is a wide
   left-to-right tree that scrolls sideways inside its own panel.
 - Body text contrast is checked at 4.5:1 against the brightest spot the background
   (`scene.svg`) can actually put behind on-background text, not just a dark corner of
