@@ -689,3 +689,11 @@ button.h-label:hover { border-color: var(--accent-bright); }
 
 .brand-avatar-link { align-items: center; gap: 12px; line-height: 1; text-decoration: none; }
 .brand-avatar-link .wordmark { font-family: var(--sans); font-weight: 700; font-size: 17px; letter-spacing: .08em; }
+
+/* Permissions page: the people list and the editor each scroll on their own */
+@media (min-width: 761px) {
+  .permissions-layout { height: calc(100vh - 270px); min-height: 500px; }
+  .permissions-layout .people-pane { display: flex; flex-direction: column; min-height: 0; }
+  .permissions-layout .people-list { flex: 1; min-height: 0; overflow-y: auto; }
+  .permissions-layout .editor-pane { min-height: 0; overflow-y: auto; }
+}
