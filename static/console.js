@@ -514,7 +514,8 @@ function submittedRoles(data, p) {
   // dirty-checking and saving never mistake "the browser didn't submit it"
   // for "the person asked to remove it".
   const roles = data.getAll('role');
-  if (p?.commander && !roles.includes('commander')) roles.push('commander');
+  const lockedRole = (state.roles.find(role => role.locked) || {}).name;
+  if (p?.commander && lockedRole && !roles.includes(lockedRole)) roles.push(lockedRole);
   return roles;
 }
 function markPersonDirty() {
