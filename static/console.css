@@ -297,6 +297,13 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .role-scope-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
 .role-scope-columns h4 { margin: 0 0 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .write-mark { margin-left: 6px; padding: 1px 6px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+/* The one built-in, non-editable role: same card shape, no action affordances. */
+.role-card-locked { border-color: var(--accent); }
+.role-locked-badge { padding: 1px 8px; color: var(--accent-bright); background: var(--panel-raised); border: 1px solid var(--accent); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+.role-locked-description { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+.person-role-locked { opacity: .85; }
+.person-role-locked-hint { font-size: 11px; }
+.person-commander-note { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .send-mark { margin-left: 4px; padding: 1px 6px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
 .scope-kind-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .scope-kind-list li { display: grid; gap: 1px; }

@@ -159,6 +159,14 @@ def _seed(store: Store) -> None:
 
     store.set_setting("GATE_CONFIRM_SENDS", "true")
 
+    # Commander seed: the owner's two made-up verified handles, and the one person
+    # who holds them, so the Roles/People pages can show the locked-state UI.
+    store.set_approver_handles(telegram_id="7000000001", phone="5559990000")
+    commander = store.create_person(display="Taylor Reyes", note="Commander (seeded for e2e)")
+    store.upsert_contact("telegram", "telegram:7000000001", person_id=commander["id"], source="seed")
+    store.upsert_contact("phone", "5559990000", person_id=commander["id"], source="seed")
+    store.commander_person_id()  # resolve + pin
+
 
 async def run(host: str, port: int, allowed_origins: str, db_path: str) -> None:
     os.environ["CONSOLE_ALLOWED_ORIGINS"] = allowed_origins

@@ -458,9 +458,20 @@ async function refreshRoles({ throwOnError = false } = {}) {
 }
 
 function heldRoles(value) { return String(value || '').split(',').map(n => n.trim()).filter(Boolean); }
-function rolePicker(held, inputName) {
-  const have = new Set(heldRoles(held));
-  return state.roles.map(role => `<label class="person-role-choice"><input type="checkbox" name="${inputName}" value="${escapeHTML(role.name)}" ${have.has(role.name) ? 'checked' : ''}><span>${escapeHTML(role.name)}</span></label>`).join('') || '<span class="muted">No roles configured.</span>';
+function rolePicker(p, inputName) {
+  const have = new Set(heldRoles(p?.role));
+  const items = state.roles.map(role => {
+    if (role.locked) {
+      // A locked role is never offered as a choice for anyone -- it cannot be
+      // granted or removed here. The one person who holds it (flagged by the
+      // API, never by matching the role's name) sees it as a fixed fact about
+      // their own entry; nobody else sees it at all.
+      if (!p?.commander) return '';
+      return `<label class="person-role-choice person-role-locked"><input type="checkbox" name="${inputName}" value="${escapeHTML(role.name)}" checked disabled><span>${escapeHTML(role.name)}</span><span class="muted person-role-locked-hint">cannot be changed here</span></label>`;
+    }
+    return `<label class="person-role-choice"><input type="checkbox" name="${inputName}" value="${escapeHTML(role.name)}" ${have.has(role.name) ? 'checked' : ''}><span>${escapeHTML(role.name)}</span></label>`;
+  }).filter(Boolean);
+  return items.join('') || '<span class="muted">No roles configured.</span>';
 }
 const personName = p => p?.display || '(unnamed)';
 const contactsOf = p => (p?.contacts || []).filter(c => c.kind !== 'name');
@@ -491,16 +502,25 @@ function renderPersonEditor() {
   if (!p) { $('#person-editor').innerHTML = '<div class="empty-state">Select a person</div>'; return; }
   const contacts = contactsOf(p);
   $('#person-editor').innerHTML = `<h3>Person</h3><p id="person-external-change" hidden>Changed elsewhere, <button type="button" class="button button-quiet" data-reload-person>reload</button></p>
-    <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><fieldset class="person-role-group"><legend>Roles</legend><div class="person-role-choices">${rolePicker(p.role, 'role')}</div></fieldset><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><span id="person-dirty-label" hidden>Unsaved changes</span><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button></div></form>
+    <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><fieldset class="person-role-group"><legend>Roles</legend><div class="person-role-choices">${rolePicker(p, 'role')}</div></fieldset><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><span id="person-dirty-label" hidden>Unsaved changes</span><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button></div></form>
     <h3>Contacts</h3><div id="person-contacts">${contacts.length ? contacts.map(c => `<div class="person-contact" data-contact-id="${escapeHTML(c.id)}"><select aria-label="Contact type" data-contact-kind>${kindOptions(c.kind)}</select><input aria-label="Contact value" data-contact-value value="${escapeHTML(c.raw_value || c.value)}" placeholder="${escapeHTML(contactKind(c.kind).hint)}"><button class="button button-quiet" type="button" data-remove-contact>Remove</button><div class="contact-status" role="status"></div></div>`).join('') : '<p class="muted">No contacts. Add one below or assign one from the unassigned list.</p>'}</div>
     <form id="contact-add-form" class="person-contact"><select aria-label="New contact type" name="kind">${kindOptions()}</select><input name="value" aria-label="New contact value" required placeholder="${escapeHTML((state.contactKinds || []).find(k => k.addable)?.hint || '')}"><button class="button button-quiet" type="submit">Add</button><div class="contact-status" role="status"></div></form>
-    <div class="person-access"><h3>Can act without asking</h3>${(p.effective_scopes || []).length ? `<ul>${p.effective_scopes.map(s => `<li class="scope-name">${escapeHTML(s)}</li>`).join('')}</ul>` : '<p class="muted">No scopes granted.</p>'}${p.scopes?.length ? `<p class="muted">plus ${p.scopes.length} direct grants</p>` : ''}<a href="/console/roles" data-route="roles">Edit roles</a></div>
-    <details class="person-advanced"><summary>Move or merge</summary><form id="contact-move-form"><label class="field">Contact<select name="contact_id" required><option value="">Choose contact</option>${contacts.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(contactKind(c.kind).label + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select></label><label class="field">To person (or Unassigned)<select name="person_id"><option value="">Unassigned</option>${personOptions(p.id)}</select></label><button class="button button-quiet" type="submit">Move</button></form><form id="person-merge-form"><label class="field">This is the same person as<select name="keep_id" required><option value="">Choose person</option>${personOptions(p.id)}</select></label><p class="muted">Their contacts move to that person. Roles and note are not combined.</p><button class="button button-quiet" type="submit">Merge into them</button></form></details><button class="button button-danger" type="button" data-delete-person>Delete person</button>`;
+    <div class="person-access"><h3>Can act without asking</h3>${p.commander ? '<p class="person-commander-note">Everything, on verified channels only.</p>' : ((p.effective_scopes || []).length ? `<ul>${p.effective_scopes.map(s => `<li class="scope-name">${escapeHTML(s)}</li>`).join('')}</ul>` : '<p class="muted">No scopes granted.</p>')}${(!p.commander && p.scopes?.length) ? `<p class="muted">plus ${p.scopes.length} direct grants</p>` : ''}<a href="/console/roles" data-route="roles">Edit roles</a></div>
+    ${p.commander ? '<p class="person-commander-note">This person cannot be deleted or merged into another person here.</p>' : `<details class="person-advanced"><summary>Move or merge</summary><form id="contact-move-form"><label class="field">Contact<select name="contact_id" required><option value="">Choose contact</option>${contacts.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(contactKind(c.kind).label + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select></label><label class="field">To person (or Unassigned)<select name="person_id"><option value="">Unassigned</option>${personOptions(p.id)}</select></label><button class="button button-quiet" type="submit">Move</button></form><form id="person-merge-form"><label class="field">This is the same person as<select name="keep_id" required><option value="">Choose person</option>${personOptions(p.id)}</select></label><p class="muted">Their contacts move to that person. Roles and note are not combined.</p><button class="button button-quiet" type="submit">Merge into them</button></form></details><button class="button button-danger" type="button" data-delete-person>Delete person</button>`}`;
+}
+function submittedRoles(data, p) {
+  // The locked role's checkbox is disabled when it is checked (the commander
+  // person), so the browser never includes it in FormData -- add it back so
+  // dirty-checking and saving never mistake "the browser didn't submit it"
+  // for "the person asked to remove it".
+  const roles = data.getAll('role');
+  if (p?.commander && !roles.includes('commander')) roles.push('commander');
+  return roles;
 }
 function markPersonDirty() {
   const form = $('#person-form'); if (!form || !state.editorPerson) return;
   const data = new FormData(form), p = state.editorPerson;
-  state.personDirty = data.get('display') !== (p.display || '') || data.get('note') !== (p.note || '') || data.getAll('role').sort().join(',') !== heldRoles(p.role).sort().join(',');
+  state.personDirty = data.get('display') !== (p.display || '') || data.get('note') !== (p.note || '') || submittedRoles(data, p).sort().join(',') !== heldRoles(p.role).sort().join(',');
   $('button[type="submit"]',form).disabled = !state.personDirty;
   $('[data-discard-person]',form).disabled = !state.personDirty;
   $('#person-dirty-label').hidden = !state.personDirty;
@@ -516,7 +536,7 @@ async function refreshPeople({throwOnError = false, external = false, localConta
         renderPersonEditor();
         $('#person-form input[name="display"]').value = draft.get('display');
         $('#person-form textarea[name="note"]').value = draft.get('note');
-        $$('#person-form input[name="role"]').forEach(b => {b.checked = draft.getAll('role').includes(b.value);});
+        $$('#person-form input[name="role"]').forEach(b => {if (!b.disabled) b.checked = draft.getAll('role').includes(b.value);});
         markPersonDirty(); $('#person-external-change').hidden = !changed;
       } else if (external) $('#person-external-change').hidden = false;
     }
@@ -541,7 +561,7 @@ function handlePeopleEvent(event) {
 async function savePerson(form) {
   if(!state.personDirty || form.dataset.saving) return;
   const id = state.selectedPerson, data = new FormData(form);
-  const body = {id,display:data.get('display'),role:data.getAll('role').join(', '),note:data.get('note'),scopes:state.people.find(p => p.id === id)?.scopes || state.editorPerson.scopes || []};
+  const body = {id,display:data.get('display'),role:submittedRoles(data, state.editorPerson).join(', '),note:data.get('note'),scopes:state.people.find(p => p.id === id)?.scopes || state.editorPerson.scopes || []};
   form.dataset.saving = '1'; setFormBusy($('#person-editor'),true);
   try {
     const result = await peoplePost('/people/update',body,e => e.id === id && e.action === 'updated');
@@ -662,7 +682,20 @@ function scopeList(scopes = []) {
 
 function renderRolesPage() {
   $('#roles-count').textContent = `${state.roles.length} configured`;
-  $('#roles-list').innerHTML = state.roles.length ? state.roles.map(role => `<div class="role-card" data-role-name="${escapeHTML(role.name)}">
+  // The locked (built-in) role, if present, is shown first -- it is a fixed
+  // fact about the system, not something this list can rearrange or edit.
+  const ordered = [...state.roles].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
+  $('#roles-list').innerHTML = ordered.length ? ordered.map(role => role.locked ? `<div class="role-card role-card-locked" data-role-name="${escapeHTML(role.name)}">
+    <div class="role-card-head">
+      <div><span class="role-name">${escapeHTML(role.name)}</span><div class="muted">${escapeHTML(role.note || 'No note')}</div></div>
+      <div class="role-card-actions"><span class="role-locked-badge">Built in</span></div>
+    </div>
+    <p class="role-locked-description">${escapeHTML(role.description || 'Everything, on verified channels only.')}</p>
+    <div class="role-members">
+      <h4>Members (${role.members.length})</h4>
+      <ul class="member-list">${role.members.length ? role.members.map(m => `<li><span class="person-name">${escapeHTML(m.person)}</span><span class="person-key">${escapeHTML(m.key)}</span></li>`).join('') : '<li class="muted">No members</li>'}</ul>
+    </div>
+  </div>` : `<div class="role-card" data-role-name="${escapeHTML(role.name)}">
     <div class="role-card-head">
       <div><span class="role-name">${escapeHTML(role.name)}</span><div class="muted">${escapeHTML(role.note || 'No note')}</div></div>
       <div class="role-card-actions">
