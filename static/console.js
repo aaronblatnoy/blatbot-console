@@ -1057,7 +1057,12 @@ async function loadScheduleHistory(id) {
 function cadenceFieldsHTML(kind) {
   if (kind === 'once') return '<label>Date and time<input type="datetime-local" name="cadence_at"></label>';
   if (kind === 'every') return `<label>Every<span class="cadence-every"><input type="number" min="1" name="cadence_every_value" value="1"><select name="cadence_every_unit"><option value="minutes">minutes</option><option value="hours">hours</option></select></span></label>`;
-  if (kind === 'daily' || kind === 'weekdays') return '<label>Time<input type="time" name="cadence_time"></label>';
+  // Separate field names per kind even where two kinds look identical ("daily" and
+  // "weekdays" both ask for just a time): both fields exist in the DOM at once (only
+  // hidden, not removed), so a shared name makes form.cadence_time ambiguous --
+  // accessing .value on it then silently reads as empty instead of throwing.
+  if (kind === 'daily') return '<label>Time<input type="time" name="cadence_daily_time"></label>';
+  if (kind === 'weekdays') return '<label>Time<input type="time" name="cadence_weekdays_time"></label>';
   if (kind === 'weekly') return `<label>Day<select name="cadence_day">${state.weekdayOptions.map(w => `<option value="${escapeHTML(w.value)}">${escapeHTML(w.label)}</option>`).join('')}</select></label><label>Time<input type="time" name="cadence_weekly_time"></label>`;
   if (kind === 'cron') return '<label>Cron<input type="text" name="cadence_expr" placeholder="0 9 * * 1-5"></label>';
   return '';
@@ -1085,12 +1090,17 @@ function fillCadenceFields(form, kind, cadence = {}) {
     if (minutes % 60 === 0 && minutes >= 60) { form.cadence_every_value.value = minutes / 60; form.cadence_every_unit.value = 'hours'; }
     else { form.cadence_every_value.value = minutes; form.cadence_every_unit.value = 'minutes'; }
   }
-  if ((kind === 'daily' || kind === 'weekdays') && cadence.time) form.cadence_time.value = cadence.time;
+  if (kind === 'daily' && cadence.time) form.cadence_daily_time.value = cadence.time;
+  if (kind === 'weekdays' && cadence.time) form.cadence_weekdays_time.value = cadence.time;
   if (kind === 'weekly') { if (cadence.day) form.cadence_day.value = cadence.day; if (cadence.time) form.cadence_weekly_time.value = cadence.time; }
   if (kind === 'cron' && cadence.expr) form.cadence_expr.value = cadence.expr;
 }
 
 function openScheduleEditor(schedule = null) {
+  // Remembered so saveSchedule can tell whether the owner actually touched the
+  // prompt or capabilities (which need a fresh yes) versus just cadence/report/
+  // title/until (which the contract applies at once).
+  state.editingSchedule = schedule || null;
   $('#schedule-dialog-title').textContent = schedule ? `Edit ${schedule.title}` : 'New schedule';
   $('#schedule-id').value = schedule?.id || '';
   $('#schedule-title').value = schedule?.title || '';
@@ -1107,13 +1117,19 @@ function openScheduleEditor(schedule = null) {
 
 function cadencePayload(form) {
   const kind = form.cadence_kind.value;
-  if (kind === 'once') return { at: form.cadence_at.value ? new Date(form.cadence_at.value).toISOString() : null };
+  // The data contract's "at" is an ISO LOCAL datetime read in the schedule's own
+  // timezone field, not a UTC instant -- the <input type=datetime-local> value is
+  // already exactly that ("YYYY-MM-DDTHH:MM"), so send it as-is. Running it through
+  // new Date(...).toISOString() would convert through the browser's own local zone
+  // and tag it "Z" (UTC), shifting the time the owner actually picked.
+  if (kind === 'once') return { at: form.cadence_at.value ? `${form.cadence_at.value}:00` : null };
   if (kind === 'every') {
     let minutes = Number(form.cadence_every_value.value || 0);
     if (form.cadence_every_unit.value === 'hours') minutes *= 60;
     return { minutes };
   }
-  if (kind === 'daily' || kind === 'weekdays') return { time: form.cadence_time.value };
+  if (kind === 'daily') return { time: form.cadence_daily_time.value };
+  if (kind === 'weekdays') return { time: form.cadence_weekdays_time.value };
   if (kind === 'weekly') return { day: form.cadence_day.value, time: form.cadence_weekly_time.value };
   if (kind === 'cron') return { expr: form.cadence_expr.value };
   return {};
@@ -1123,16 +1139,28 @@ async function saveSchedule(form) {
   const data = new FormData(form);
   const cadenceKind = data.get('cadence_kind');
   const reportValue = data.get('report_every_time');
+  const prompt = data.get('prompt');
+  const scopes = data.getAll('capabilities');
+  const id = $('#schedule-id').value;
+  const editing = state.editingSchedule;
+  // On edit, the contract applies cadence/report/title/until at once but needs a
+  // fresh yes for a prompt or capabilities change -- decided by whether the key is
+  // even present in the request, not its value. Sending prompt/scopes unconditionally
+  // (their current, often-unchanged, values) would ask for approval on every edit,
+  // including a plain cadence change. Only include them when they actually differ,
+  // or on create, where both are required regardless.
+  const promptChanged = !editing || prompt !== editing.prompt;
+  const scopesChanged = !editing || JSON.stringify([...scopes].sort()) !== JSON.stringify((editing.capabilities || []).map(c => c.scope).sort());
   const payload = {
     title: data.get('title'),
-    prompt: data.get('prompt'),
     cadence_kind: cadenceKind,
     cadence: cadencePayload(form),
     report_every_time: reportValue === 'true' ? true : reportValue === 'false' ? false : reportValue,
-    until: data.get('until') ? new Date(data.get('until')).toISOString() : null,
-    scopes: data.getAll('capabilities'),
+    // The data contract's `until` is epoch seconds (a number), not an ISO string.
+    until: data.get('until') ? Math.floor(new Date(data.get('until')).getTime() / 1000) : null,
   };
-  const id = $('#schedule-id').value;
+  if (!id || promptChanged) payload.prompt = prompt;
+  if (!id || scopesChanged) payload.scopes = scopes;
   if (id) payload.id = Number(id);
   setFormBusy(form, true);
   try {
