@@ -49,13 +49,16 @@ def main():
             open_schedules()
             expect(page.locator('.schedule-card')).to_have_count(5)
             page.screenshot(path=str(SHOTS / 'desktop-list.png'), full_page=True)
-            expect(card('Monday brief').locator('.schedule-approval')).to_be_visible()
+            expect(card('Monday brief').locator('.state')).to_contain_text('Needs your yes')
             expect(card('Monday brief').locator('[data-schedule-action="approve"]')).to_be_visible()
             expect(card('Monday brief').locator('[data-schedule-action="reject"]')).to_be_visible()
             page.screenshot(path=str(SHOTS / 'card-needs-approval.png'))
             missing = card('Donor tracker sync')
             expect(missing.locator('.schedule-missing')).to_contain_text('look up and edit contacts')
             expect(missing.locator('[data-schedule-let-it]')).to_be_visible()
+            expect(card('October invoice reminder')).to_contain_text('No capabilities')
+            chip_font = card('Team total watch').locator('.schedule-capability-chip').first.evaluate('e => getComputedStyle(e).fontFamily')
+            assert 'mono' not in chip_font.lower(), chip_font
         check(1, 'Desktop list renders every state; approval card and missing-capability card show', one)
 
         def two():
@@ -76,7 +79,7 @@ def main():
             expect(card('Team total watch').locator('[data-schedule-action="start_again"]')).to_be_visible()
             card('Team total watch').locator('[data-schedule-action="start_again"]').click()
             page.wait_for_timeout(300)
-            expect(card('Team total watch').locator('.state')).to_contain_text('Active')
+            expect(card('Team total watch').locator('.state')).to_contain_text('Running')
         check(3, 'Pause and resume (start_again) call the right endpoint and flip state', three)
 
         def four():
@@ -91,15 +94,15 @@ def main():
             paused = card('Weekly backup check')
             paused.locator('[data-schedule-action="stop"]').click()
             page.wait_for_timeout(300)
-            expect(card('Weekly backup check').locator('.state')).to_contain_text('Ended')
+            expect(card('Weekly backup check').locator('.state')).to_contain_text('Stopped')
         check(4, 'A refused action is 409 from the API; stop calls stop and ends the schedule', four)
 
         def five():
             approve_card = card('Monday brief')
             approve_card.locator('[data-schedule-action="approve"]').click()
             page.wait_for_timeout(300)
-            expect(card('Monday brief').locator('.state')).to_contain_text('Active')
-            expect(card('Monday brief').locator('.schedule-approval')).to_have_count(0)
+            expect(card('Monday brief').locator('.state')).to_contain_text('Running')
+            expect(card('Monday brief').locator('.state')).not_to_contain_text('Needs your yes')
         check(5, 'Approve calls /schedules/approve and clears the needs-approval state', five)
 
         def six():
@@ -108,6 +111,11 @@ def main():
             page.locator('#schedule-prompt').fill('Watch the status page and tell me if it goes down.')
             page.locator('#schedule-title').fill('Status page watch')
             page.locator('#schedule-cadence-options input[value=every]').check()
+            # Only the selected choice's fields show; every other choice collapses to
+            # its radio line.
+            expect(page.locator('[data-cadence-fields=every]')).to_be_visible()
+            expect(page.locator('[data-cadence-fields=once]')).to_be_hidden()
+            expect(page.locator('[data-cadence-fields=weekly]')).to_be_hidden()
             page.locator('[data-cadence-fields=every] input[name=cadence_every_value]').fill('2')
             page.locator('[data-cadence-fields=every] select[name=cadence_every_unit]').select_option('hours')
             page.locator('#schedule-scopes input[value=web_read]').check()
@@ -125,7 +133,7 @@ def main():
 
         def seven():
             long_card = card('Donor tracker sync')
-            long_card.locator('.schedule-history summary').click()
+            long_card.locator('.schedule-history-toggle').click()
             page.wait_for_selector('.schedule-history-table .schedule-run-row')
             page.screenshot(path=str(SHOTS / 'history-open.png'), full_page=True)
             row = long_card.locator('.schedule-run-row').first

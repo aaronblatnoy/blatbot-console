@@ -899,18 +899,22 @@ const ACTION_LABELS = {
 
 state.scheduleErrors = new Map();   // schedule id -> inline 409 message
 state.scheduleHistory = new Map();  // schedule id -> loaded run history payload
+state.scheduleHistoryOpen = new Set(); // schedule ids whose history panel is expanded
 state.scheduleKinds = [];
 state.reportOptions = [];
 state.capabilityOptions = [];
 state.weekdayOptions = [];
 
+// Colour comes from `state` + `needs_approval`, never from parsing `state_label` text
+// (the label wording -- "Running", "Waiting", "Paused", "Needs your yes", "Stopped",
+// "Ended" -- is the API's to change without this breaking).
 function stateClassForSchedule(schedule) {
   if (schedule.needs_approval) return 'pending';
   if (schedule.state === 'active') return 'running';
-  if (schedule.state === 'ended') return 'failed';
-  if (schedule.state === 'proposed') return 'pending';
-  return 'done'; // paused, or anything else: a quiet, non-alarming state
+  return 'neutral'; // paused, proposed (without approval pending), ended: no alarm color
 }
+
+const OUTCOME_CLASS = { complete: 'neutral', incomplete: 'pending', failed: 'failed', interrupted: 'failed', skipped: 'neutral' };
 
 function relativeFromSeconds(seconds) {
   if (seconds == null) return '';
@@ -926,9 +930,13 @@ function scheduleLastRunBlock(schedule) {
   const run = schedule.last_run;
   if (!run) return '<p class="schedule-last-run muted">No runs yet.</p>';
   const refused = (run.denied || []).map(d => escapeHTML(d.label)).join(', ');
+  const outcomeClass = OUTCOME_CLASS[run.outcome] || 'neutral';
   return `<div class="schedule-last-run">
     <dt>Last run</dt>
-    <dd>${escapeHTML(run.started_text)} &middot; ${escapeHTML(run.outcome_label)}${run.result_line ? ` &middot; ${escapeHTML(run.result_line)}` : ''}
+    <dd>
+      <span class="schedule-outcome schedule-outcome-${outcomeClass}">${escapeHTML(run.outcome_label)}</span>
+      ${run.result_line ? `<span>${escapeHTML(run.result_line)}</span>` : ''}
+      <span class="muted schedule-last-run-time">${escapeHTML(run.started_text)}</span>
       ${run.outcome !== 'complete' && refused ? `<div class="schedule-refused">Refused: ${refused}</div>` : ''}
     </dd>
   </div>`;
@@ -943,11 +951,6 @@ function scheduleMissingBlock(schedule) {
   </p>`;
 }
 
-function scheduleApprovalBlock(schedule) {
-  if (!schedule.needs_approval) return '';
-  return '<p class="schedule-approval">Needs your yes.</p>';
-}
-
 function scheduleActionButtons(schedule) {
   return (schedule.actions || []).map(action => {
     const danger = action === 'stop' || action === 'reject';
@@ -957,7 +960,12 @@ function scheduleActionButtons(schedule) {
 
 function scheduleCapabilitiesBlock(schedule) {
   const labels = (schedule.capabilities || []).map(c => c.label);
-  return scopeChips(labels);
+  // Not scopeChips(): that helper's default empty text says "no scopes" and its chip
+  // is set in the mono face. Schedules never says the word "scopes" to the owner, and
+  // the console's rule is no monospace anywhere, so this renders its own chip markup.
+  return labels.length
+    ? labels.map(label => `<span class="schedule-capability-chip">${escapeHTML(label)}</span>`).join('')
+    : '<span class="muted">No capabilities</span>';
 }
 
 function scheduleHistoryBlock(schedule) {
@@ -995,14 +1003,13 @@ function renderSchedules() {
     <p class="schedule-cadence">${escapeHTML(schedule.cadence_text)}${schedule.next_run_text ? ` &middot; <span data-next-run-text>${escapeHTML(schedule.next_run_text)}</span> <span class="muted" data-next-run-rel="${escapeHTML(schedule.next_run_in_seconds ?? '')}" data-next-run-fetched="${Date.now()}"></span>` : ''}</p>
     ${scheduleLastRunBlock(schedule)}
     ${scheduleMissingBlock(schedule)}
-    ${scheduleApprovalBlock(schedule)}
     <div class="scope-row">${scheduleCapabilitiesBlock(schedule)}</div>
-    <div class="schedule-actions">${scheduleActionButtons(schedule)}</div>
     ${state.scheduleErrors.has(schedule.id) ? `<p class="schedule-inline-error">${escapeHTML(state.scheduleErrors.get(schedule.id))}</p>` : ''}
-    <details class="schedule-history" data-schedule-history="${escapeHTML(schedule.id)}">
-      <summary>Run history</summary>
-      ${scheduleHistoryBlock(schedule)}
-    </details>
+    <div class="schedule-action-row">
+      <div class="schedule-actions">${scheduleActionButtons(schedule)}</div>
+      <button class="schedule-history-toggle" type="button" data-schedule-history="${escapeHTML(schedule.id)}" aria-expanded="${state.scheduleHistoryOpen.has(schedule.id)}">Run history</button>
+    </div>
+    <div class="schedule-history-panel" data-schedule-history-panel="${escapeHTML(schedule.id)}">${state.scheduleHistoryOpen.has(schedule.id) ? scheduleHistoryBlock(schedule) : ''}</div>
   </article>`).join('') : '<div class="empty-state">No schedules.</div>';
   tickScheduleClocks();
 }
@@ -1045,8 +1052,6 @@ async function loadScheduleHistory(id) {
     showNotice(`History not loaded: ${error.message}`, 'error');
   }
   renderSchedules();
-  const details = $(`[data-schedule-history="${id}"]`);
-  if (details) details.open = true;
 }
 
 function cadenceFieldsHTML(kind) {
@@ -1096,7 +1101,7 @@ function openScheduleEditor(schedule = null) {
   $('#schedule-report-options').innerHTML = state.reportOptions.map((opt, index) => `<label class="radio-option"><input type="radio" name="report_every_time" value="${escapeHTML(opt.value)}" ${(schedule ? String(schedule.report_every_time) === String(opt.value) : index === 0) ? 'checked' : ''}>${escapeHTML(opt.label)}</label>`).join('');
   $('#schedule-until').value = schedule?.until ? new Date(Number(schedule.until) * 1000).toISOString().slice(0, 10) : '';
   const selected = new Set((schedule?.capabilities || []).map(c => c.scope));
-  $('#schedule-scopes').innerHTML = state.capabilityOptions.map(opt => `<label class="scope-option" title="${escapeHTML((opt.tools || []).join(', '))}"><input type="checkbox" name="capabilities" value="${escapeHTML(opt.scope)}" ${selected.has(opt.scope) ? 'checked' : ''}><span class="scope-option-text"><span class="scope-name">${escapeHTML(opt.label)}</span></span></label>`).join('');
+  $('#schedule-scopes').innerHTML = state.capabilityOptions.map(opt => `<label class="scope-option" title="${escapeHTML((opt.tools || []).join(', '))}"><input type="checkbox" name="capabilities" value="${escapeHTML(opt.scope)}" ${selected.has(opt.scope) ? 'checked' : ''}><span class="capability-label">${escapeHTML(opt.label)}</span></label>`).join('');
   $('#schedule-dialog').showModal();
 }
 
@@ -1133,7 +1138,10 @@ async function saveSchedule(form) {
   try {
     const result = await post(id ? '/schedules/edit' : '/schedules', payload);
     $('#schedule-dialog').close();
-    showNotice(result.message || 'Schedule saved.');
+    // On create this is the full plain proposal paragraph (what it will do, when,
+    // and whether it needs a yes) -- shown whole, with no auto-dismiss timeout so
+    // it does not vanish before it is read.
+    showNotice(result.message || 'Schedule saved.', 'info', 0);
     await refreshSchedules({ throwOnError: false });
   } catch (error) { showNotice(`Schedule not saved: ${error.message}`, 'error'); }
   finally { setFormBusy(form, false); }
@@ -1586,13 +1594,23 @@ document.addEventListener('click',async event => {
 $('#sync-people')?.addEventListener('click', syncPeopleFromInkbox);
 $('#add-role')?.addEventListener('click', () => openRoleEditor());
 $('#add-schedule')?.addEventListener('click', () => openScheduleEditor());
-// <details> toggle events do not bubble, so this listens in the capture phase instead.
-document.addEventListener('toggle', event => {
-  const details = event.target.closest?.('[data-schedule-history]');
-  if (!details || !details.open) return;
-  const id = Number(details.dataset.scheduleHistory);
-  if (!state.scheduleHistory.has(id)) loadScheduleHistory(id);
-}, true);
+// A plain toggle button rather than <details>/<summary>: re-rendering an already-open
+// <details> on every unrelated card update risks re-firing its own native toggle
+// event (open state re-asserted on the freshly parsed element), which would re-render
+// again, forever. A button has no such feedback loop.
+document.addEventListener('click', event => {
+  const toggle = event.target.closest('[data-schedule-history]');
+  if (!toggle) return;
+  const id = Number(toggle.dataset.scheduleHistory);
+  if (state.scheduleHistoryOpen.has(id)) {
+    state.scheduleHistoryOpen.delete(id);
+    renderSchedules();
+  } else {
+    state.scheduleHistoryOpen.add(id);
+    if (!state.scheduleHistory.has(id)) loadScheduleHistory(id);
+    else renderSchedules();
+  }
+});
 document.addEventListener('change', event => {
   if (!event.target.matches('#schedule-form [name=cadence_kind]')) return;
   $$('#schedule-form .cadence-fields').forEach(el => { el.hidden = el.dataset.cadenceFields !== event.target.value; });

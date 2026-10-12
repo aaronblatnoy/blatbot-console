@@ -33,8 +33,8 @@ CADENCE_KINDS = [
     {"kind": "cron", "label": "Cron (advanced)", "fields": ["expr"]},
 ]
 REPORT_OPTIONS = [
-    {"value": "false", "label": "Only when something changed or it could not finish"},
-    {"value": "true", "label": "Every time"},
+    {"value": False, "label": "Only when something changed or it could not finish"},
+    {"value": True, "label": "Every time"},
 ]
 WEEKDAYS = [
     {"value": "mon", "label": "Monday"}, {"value": "tue", "label": "Tuesday"},
@@ -43,9 +43,26 @@ WEEKDAYS = [
     {"value": "sun", "label": "Sunday"},
 ]
 
-STATE_LABELS = {"proposed": "Proposed", "active": "Active", "paused": "Paused", "ended": "Ended"}
-OUTCOME_LABELS = {"complete": "Complete", "incomplete": "Incomplete", "failed": "Failed",
+OUTCOME_LABELS = {"complete": "Finished", "incomplete": "Could not finish", "failed": "Failed",
                    "interrupted": "Interrupted", "skipped": "Skipped"}
+
+
+def state_label(s):
+    # The coordinator's fixed wording: "Running", "Waiting", "Paused", "Needs your
+    # yes", "Stopped", "Ended". state_label is a function of state + needs_approval,
+    # never the other way around -- the front end colours from the same two fields,
+    # never by parsing this text.
+    if s["needs_approval"]:
+        return "Needs your yes"
+    if s["state"] == "active":
+        return "Running"
+    if s["state"] == "paused":
+        return "Paused"
+    if s["state"] == "proposed":
+        return "Waiting"
+    if s["state"] == "ended":
+        return "Stopped" if s.get("stopped_by_owner") else "Ended"
+    return s["state"]
 
 
 def now() -> float:
@@ -97,7 +114,7 @@ class State:
             "state": "proposed", "cadence_kind": "weekdays", "cadence": {"time": "07:30"}, "timezone": "America/New_York",
             "timezone_label": "Eastern", "report_every_time": True, "until": None,
             "capability_scopes": ["web_read"], "missing_capability_scopes": [],
-            "next_run": t + 86400, "needs_approval": True, "approval_request_id": 501,
+            "next_run": t + 86400, "needs_approval": True, "approval_request_id": None,
             "actions": ["approve", "reject", "edit"],
         }
         self.runs[sid] = []
@@ -178,7 +195,7 @@ class State:
         next_run = s["next_run"]
         return {
             "id": s["id"], "title": s["title"], "prompt": s["prompt"], "state": s["state"],
-            "state_label": STATE_LABELS[s["state"]],
+            "state_label": state_label(s),
             "cadence_kind": s["cadence_kind"], "cadence": s["cadence"], "cadence_text": describe_cadence(s),
             "timezone": s["timezone"], "timezone_label": s["timezone_label"],
             "next_run": next_run, "next_run_text": self._next_run_text(next_run),
@@ -188,7 +205,7 @@ class State:
             "until": s["until"],
             "capabilities": _capabilities_for(s["capability_scopes"]),
             "missing_capabilities": _capabilities_for(s["missing_capability_scopes"]),
-            "last_run": last, "needs_approval": s["needs_approval"], "approval_request_id": s["approval_request_id"],
+            "last_run": last, "needs_approval": s["needs_approval"], "approval_request_id": None,
             "actions": s["actions"],
         }
 
@@ -206,7 +223,15 @@ class State:
 def describe_cadence(s):
     kind, cadence = s["cadence_kind"], s["cadence"]
     if kind == "once":
-        return f"Once, {cadence.get('at', '')}"
+        # The real API sends this already worded ("once on Thu Oct 1 at 9:00 AM");
+        # the front end renders cadence_text as given, so the stub must match that
+        # shape rather than a raw ISO string.
+        at = cadence.get("at", "")
+        try:
+            dt = time.strptime(at[:16], "%Y-%m-%dT%H:%M")
+            return time.strftime("once on %a %b %-d at %-I:%M %p", dt)
+        except ValueError:
+            return f"once on {at}"
     if kind == "every":
         minutes = cadence.get("minutes", 0)
         if minutes % 60 == 0:
@@ -362,12 +387,19 @@ class Handler(BaseHTTPRequestHandler):
                 "cadence": body.get("cadence") or {}, "timezone": body.get("timezone") or "America/New_York",
                 "timezone_label": "Eastern", "report_every_time": bool(body.get("report_every_time")),
                 "until": body.get("until"), "capability_scopes": scopes, "missing_capability_scopes": [],
-                "next_run": now() + 3600, "needs_approval": True, "approval_request_id": sid + 1000,
+                "next_run": now() + 3600, "needs_approval": True, "approval_request_id": None,
                 "actions": ["approve", "reject", "edit"],
             }
             STATE.runs[sid] = []
-            self._json(200, {"schedule": STATE.schedule_view(sid), "applied": False, "needs_approval": True,
-                              "message": "Set up. Reply yes to start."})
+            view = STATE.schedule_view(sid)
+            report_text = "every time" if view["report_every_time"] else "only when something changed or it could not finish"
+            capability_words = ", ".join(c["label"] for c in view["capabilities"]) or "nothing beyond its own reply"
+            paragraph = (
+                f'Set up "{view["title"]}": {view["cadence_text"]}. '
+                f'It will {capability_words}. You hear from it {report_text}. '
+                f'Reply yes to start, or tell me what to change.'
+            )
+            self._json(200, {"schedule": view, "applied": False, "needs_approval": True, "message": paragraph})
             return
 
         sid = body.get("id")
@@ -388,7 +420,6 @@ class Handler(BaseHTTPRequestHandler):
         s["missing_capability_scopes"] = [m for m in s["missing_capability_scopes"] if m not in scopes]
         if prompt_or_scopes_changed:
             s["needs_approval"] = True
-            s["approval_request_id"] = sid + 2000
             message = "Change needs your yes."
         else:
             message = "Applied."
@@ -414,6 +445,7 @@ class Handler(BaseHTTPRequestHandler):
             s["actions"] = ["pause", "run_now", "stop", "edit"]
         elif action == "stop":
             s["state"] = "ended"
+            s["stopped_by_owner"] = True
             s["actions"] = ["edit"]
         elif action == "run_now":
             pass  # made-up stub: no real run is launched

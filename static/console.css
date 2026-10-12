@@ -243,6 +243,7 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .state-running { color: var(--running); background: var(--violet-dim); border-color: var(--running); }
 .state-done { color: var(--done); background: #07241a; border-color: var(--done); }
 .state-failed { color: var(--failed); background: var(--danger-dim); border-color: var(--failed); }
+.state-neutral { color: var(--muted); background: var(--panel-raised); border-color: var(--rule-strong); }
 
 .search-field { display: flex; align-items: center; gap: 7px; min-width: 250px; padding: 0 10px; border: 1px solid var(--rule-strong); background: var(--panel); color: var(--faint); }
 .search-field:focus-within { border-color: var(--accent-bright); }
@@ -524,17 +525,30 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 .schedule-dialog .form-actions { display: flex; justify-content: flex-end; margin-bottom: 18px; }
 .schedule-dialog #schedule-scopes.scope-options { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; border: 1px solid var(--rule); padding: 6px 8px; }
 
-.schedule-cadence { margin: 10px 0 0; color: var(--muted); }
-.schedule-last-run { margin: 10px 0 0; display: flex; gap: 8px; min-width: 0; }
+.schedule-cadence { margin: 8px 0 0; color: var(--muted); }
+.schedule-last-run { margin: 8px 0 0; display: flex; gap: 8px; min-width: 0; }
 .schedule-last-run dt { color: var(--muted); font-size: 11px; white-space: nowrap; }
-.schedule-last-run dd { margin: 0; overflow-wrap: anywhere; }
-.schedule-refused { color: var(--failed); margin-top: 3px; }
-.schedule-missing { margin: 10px 0 0; color: var(--waiting); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.schedule-approval { margin: 10px 0 0; color: var(--waiting); font-weight: 700; }
-.schedule-inline-error { margin: 10px 0 0; color: var(--failed); }
-.schedule-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
-.schedule-history summary { cursor: pointer; color: var(--accent-bright); }
-.schedule-history-body { margin-top: 10px; max-width: 100%; overflow-x: auto; }
+.schedule-last-run dd { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; overflow-wrap: anywhere; }
+.schedule-outcome { font-weight: 700; }
+.schedule-outcome-neutral { color: var(--muted); }
+.schedule-outcome-pending { color: var(--waiting); }
+.schedule-outcome-failed { color: var(--failed); }
+.schedule-last-run-time { margin-left: auto; }
+.schedule-refused { flex-basis: 100%; color: var(--failed); margin-top: 3px; }
+.schedule-missing { margin: 8px 0 0; color: var(--waiting); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.schedule-inline-error { margin: 8px 0 0; color: var(--failed); }
+
+/* Capability chips: same chip shape as the rest of the console, but in the page's
+   normal text face -- Schedules is the one place that rule was missed. */
+.schedule-capability-chip { display: inline-block; padding: 2px 8px; margin: 2px 6px 2px 0; color: var(--accent-bright); background: var(--accent-dim); border: 1px solid var(--rule-strong); font: 700 11px/1.5 var(--sans); }
+.capability-label { font-family: var(--sans); }
+
+.schedule-action-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.schedule-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.schedule-history-toggle { padding: 0; color: var(--muted); background: transparent; border: none; font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.schedule-history-toggle:hover, .schedule-history-toggle[aria-expanded=true] { color: var(--accent-bright); }
+.schedule-history-panel:not(:empty) { margin-top: 10px; }
+.schedule-history-body { max-width: 100%; overflow-x: auto; }
 .schedule-history-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
 .schedule-history-table th, .schedule-history-table td { padding: 6px 8px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
 .schedule-run-row { cursor: pointer; }
@@ -544,6 +558,10 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 .cadence-fieldset .cadence-option { margin: 8px 0; }
 .cadence-fieldset label { color: var(--muted); }
 .cadence-fields { margin: 6px 0 0 22px; display: flex; flex-wrap: wrap; gap: 10px; }
+/* The browser's own [hidden] rule loses to the display:flex above unless restated:
+   author rules of equal specificity beat the UA default, which is how every "When"
+   choice's fields were showing at once instead of just the selected one. */
+.cadence-fields[hidden] { display: none; }
 .cadence-every { display: inline-flex; gap: 6px; }
 .cadence-every input { width: 70px; }
 .cadence-every select { width: auto; }
@@ -560,6 +578,8 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 
 @media (max-width: 480px) {
   .cadence-fields { margin-left: 0; }
+  .schedule-action-row { flex-direction: column; align-items: stretch; }
+  .schedule-history-toggle { align-self: flex-end; }
 }
 
 @media (prefers-reduced-motion: reduce) {
