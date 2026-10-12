@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#00010d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=people-page">
+  <link rel="stylesheet" href="/static/console.css?v=sched2">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -175,7 +175,6 @@
           <p class="section-summary">Approved unattended work and continuing jobs.</p>
         </div>
         <div class="heading-actions">
-          <button id="global-schedules-pause" class="button button-quiet" type="button">Pause all</button>
           <button id="add-schedule" class="button button-primary" type="button">New schedule</button>
         </div>
       </div>
@@ -222,19 +221,20 @@
         <button class="close-button" type="button" data-close-dialog="schedule-dialog">Close</button>
       </div>
       <input id="schedule-id" type="hidden">
+      <label>What should it do<textarea id="schedule-prompt" name="prompt" rows="4" required></textarea></label>
       <label>Title<input id="schedule-title" name="title" required></label>
-      <label>Exact prompt<textarea id="schedule-prompt" name="prompt" rows="6" required></textarea></label>
-      <div class="form-grid">
-        <label>Kind<select id="schedule-kind" name="kind"><option value="once">Once</option><option value="recurring">Recurring</option><option value="continue">Continue</option></select></label>
-        <label>Report mode<select id="schedule-report" name="report_mode"><option value="always">Always</option><option value="changed">Only when it did something or failed</option></select></label>
-        <label>Run at<input id="schedule-run-at" name="run_at" type="datetime-local"></label>
-        <label>Cron<input id="schedule-cron" name="cron" placeholder="0 9 * * 1-5"></label>
-        <label>Timezone<input id="schedule-timezone" name="timezone" value="America/New_York"></label>
-        <label>Maximum runs<input id="schedule-max-runs" name="max_runs" type="number" min="1" value="20"></label>
-        <label>Deadline<input id="schedule-deadline" name="deadline" type="datetime-local"></label>
-      </div>
-      <fieldset><legend>Scopes</legend><div id="schedule-scopes" class="scope-options"></div></fieldset>
-      <div class="form-actions"><button class="button button-primary" type="submit">Save for approval</button></div>
+      <fieldset class="cadence-fieldset">
+        <legend>When</legend>
+        <div id="schedule-cadence-options"></div>
+        <details class="cadence-advanced">
+          <summary>Advanced</summary>
+          <div id="schedule-cadence-advanced"></div>
+        </details>
+      </fieldset>
+      <fieldset><legend>Tell me</legend><div id="schedule-report-options"></div></fieldset>
+      <label class="schedule-until-field">Until (optional)<input id="schedule-until" name="until" type="date"></label>
+      <fieldset><legend>Capabilities</legend><div id="schedule-scopes" class="scope-options"></div></fieldset>
+      <div class="form-actions"><button class="button button-primary" type="submit">Save</button></div>
     </form>
   </dialog>
 
@@ -260,6 +260,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=people-page"></script>
+  <script type="module" src="/static/console.js?v=sched2"></script>
 </body>
 </html>

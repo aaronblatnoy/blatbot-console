@@ -516,15 +516,50 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 .schedule-dialog form { padding-bottom: 18px; }
 .schedule-dialog form > label, .schedule-dialog fieldset, .schedule-dialog .form-grid, .schedule-dialog .form-actions { margin: 14px 18px 0; }
 .schedule-dialog form > label, .schedule-dialog .form-grid label { display: grid; gap: 5px; color: var(--muted); }
-.schedule-dialog input, .schedule-dialog select, .schedule-dialog textarea { width: 100%; padding: 8px 10px; color: var(--text); background: var(--ink); border: 1px solid var(--rule-strong); border-radius: 0; }
+.schedule-dialog input:not([type=radio]):not([type=checkbox]), .schedule-dialog select, .schedule-dialog textarea { width: 100%; padding: 8px 10px; color: var(--text); background: var(--ink); border: 1px solid var(--rule-strong); border-radius: 0; }
+.schedule-dialog input[type=radio], .schedule-dialog input[type=checkbox] { width: auto; flex: none; accent-color: var(--accent-bright); }
+.schedule-dialog .cadence-option > label, .schedule-dialog .radio-option, .schedule-dialog .scope-option { display: flex; align-items: center; gap: 8px; }
 .schedule-dialog textarea { resize: vertical; }
 .schedule-dialog .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .schedule-dialog .form-actions { display: flex; justify-content: flex-end; margin-bottom: 18px; }
 .schedule-dialog #schedule-scopes.scope-options { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; border: 1px solid var(--rule); padding: 6px 8px; }
 
+.schedule-cadence { margin: 10px 0 0; color: var(--muted); }
+.schedule-last-run { margin: 10px 0 0; display: flex; gap: 8px; min-width: 0; }
+.schedule-last-run dt { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.schedule-last-run dd { margin: 0; overflow-wrap: anywhere; }
+.schedule-refused { color: var(--failed); margin-top: 3px; }
+.schedule-missing { margin: 10px 0 0; color: var(--waiting); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.schedule-approval { margin: 10px 0 0; color: var(--waiting); font-weight: 700; }
+.schedule-inline-error { margin: 10px 0 0; color: var(--failed); }
+.schedule-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.schedule-history summary { cursor: pointer; color: var(--accent-bright); }
+.schedule-history-body { margin-top: 10px; max-width: 100%; overflow-x: auto; }
+.schedule-history-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
+.schedule-history-table th, .schedule-history-table td { padding: 6px 8px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+.schedule-run-row { cursor: pointer; }
+.schedule-run-row:hover, .schedule-run-row:focus-visible { background: var(--panel-raised); }
+.schedule-run-full { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; color: var(--text); font-family: var(--sans); }
+
+.cadence-fieldset .cadence-option { margin: 8px 0; }
+.cadence-fieldset label { color: var(--muted); }
+.cadence-fields { margin: 6px 0 0 22px; display: flex; flex-wrap: wrap; gap: 10px; }
+.cadence-every { display: inline-flex; gap: 6px; }
+.cadence-every input { width: 70px; }
+.cadence-every select { width: auto; }
+.cadence-advanced summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
+.radio-option { display: flex; align-items: center; gap: 6px; color: var(--muted); margin: 4px 0; }
+.schedule-until-field { max-width: 220px; }
+
 @media (max-width: 760px) {
   .schedule-facts, .form-grid { grid-template-columns: 1fr; }
   .schedule-actions .button { flex: 1 1 42%; text-align: center; }
+  .schedule-history-table { font-size: 12px; }
+  .schedule-history-table th:nth-child(5), .schedule-history-table td:nth-child(5) { display: none; }
+}
+
+@media (max-width: 480px) {
+  .cadence-fields { margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

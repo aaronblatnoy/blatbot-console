@@ -886,36 +886,148 @@ async function refreshTasks({ throwOnError = false } = {}) {
   }
 }
 
+// ---- Schedules (second version) -------------------------------------------------
+// Every label, option list, state name and time string on this page comes from the
+// console API (cadence_text, state_label, outcome_label, next_run_text, ...). The
+// only strings owned by this file are interface chrome: button captions, headings,
+// and the empty-state message.
+
+const ACTION_LABELS = {
+  pause: 'Pause', resume: 'Resume', run_now: 'Run now', stop: 'Stop',
+  edit: 'Edit', approve: 'Approve', reject: 'Reject', start_again: 'Start again',
+};
+
+state.scheduleErrors = new Map();   // schedule id -> inline 409 message
+state.scheduleHistory = new Map();  // schedule id -> loaded run history payload
+state.scheduleKinds = [];
+state.reportOptions = [];
+state.capabilityOptions = [];
+state.weekdayOptions = [];
+
+function stateClassForSchedule(schedule) {
+  if (schedule.needs_approval) return 'pending';
+  if (schedule.state === 'active') return 'running';
+  if (schedule.state === 'ended') return 'failed';
+  if (schedule.state === 'proposed') return 'pending';
+  return 'done'; // paused, or anything else: a quiet, non-alarming state
+}
+
+function relativeFromSeconds(seconds) {
+  if (seconds == null) return '';
+  const past = seconds < 0;
+  let remaining = Math.round(Math.abs(seconds));
+  const hours = Math.floor(remaining / 3600); remaining %= 3600;
+  const minutes = Math.floor(remaining / 60);
+  const parts = [hours && `${hours} h`, (minutes || !hours) && `${minutes} m`].filter(Boolean);
+  return `${past ? 'overdue by ' : 'in '}${parts.join(' ')}`;
+}
+
+function scheduleLastRunBlock(schedule) {
+  const run = schedule.last_run;
+  if (!run) return '<p class="schedule-last-run muted">No runs yet.</p>';
+  const refused = (run.denied || []).map(d => escapeHTML(d.label)).join(', ');
+  return `<div class="schedule-last-run">
+    <dt>Last run</dt>
+    <dd>${escapeHTML(run.started_text)} &middot; ${escapeHTML(run.outcome_label)}${run.result_line ? ` &middot; ${escapeHTML(run.result_line)}` : ''}
+      ${run.outcome !== 'complete' && refused ? `<div class="schedule-refused">Refused: ${refused}</div>` : ''}
+    </dd>
+  </div>`;
+}
+
+function scheduleMissingBlock(schedule) {
+  const missing = schedule.missing_capabilities || [];
+  if (!missing.length) return '';
+  const labels = missing.map(m => escapeHTML(m.label)).join(', ');
+  return `<p class="schedule-missing">It is not allowed to ${labels}.
+    <button class="button button-quiet" type="button" data-schedule-let-it>Let it ${labels}</button>
+  </p>`;
+}
+
+function scheduleApprovalBlock(schedule) {
+  if (!schedule.needs_approval) return '';
+  return '<p class="schedule-approval">Needs your yes.</p>';
+}
+
+function scheduleActionButtons(schedule) {
+  return (schedule.actions || []).map(action => {
+    const danger = action === 'stop' || action === 'reject';
+    return `<button class="button ${danger ? 'button-danger' : 'button-quiet'}" type="button" data-schedule-action="${escapeHTML(action)}">${escapeHTML(ACTION_LABELS[action] || action)}</button>`;
+  }).join('');
+}
+
+function scheduleCapabilitiesBlock(schedule) {
+  const labels = (schedule.capabilities || []).map(c => c.label);
+  return scopeChips(labels);
+}
+
+function scheduleHistoryBlock(schedule) {
+  const loaded = state.scheduleHistory.get(schedule.id);
+  if (!loaded) return '<div class="schedule-history-body" aria-busy="true">Loading…</div>';
+  if (!loaded.length) return '<div class="schedule-history-body"><p class="empty-state">No runs yet.</p></div>';
+  return `<div class="schedule-history-body">
+    <table class="schedule-history-table">
+      <thead><tr><th>Time</th><th>Duration</th><th>Outcome</th><th>Result</th><th>Refused</th><th>Cost</th></tr></thead>
+      <tbody>${loaded.map(run => {
+        const refused = (run.denied || []).map(d => escapeHTML(d.label)).join(', ');
+        const cost = run.cost_usd == null ? '' : `$${Number(run.cost_usd).toFixed(2)}`;
+        return `<tr class="schedule-run-row" data-run-id="${escapeHTML(run.id)}" tabindex="0">
+          <td>${escapeHTML(run.started_text)}</td>
+          <td>${escapeHTML(formatDuration(run.duration_seconds))}</td>
+          <td>${escapeHTML(run.outcome_label)}</td>
+          <td>${escapeHTML(run.result_line)}</td>
+          <td>${refused}</td>
+          <td>${escapeHTML(cost)}</td>
+        </tr>
+        <tr class="schedule-run-detail" data-run-detail="${escapeHTML(run.id)}" hidden><td colspan="6"><pre class="schedule-run-full"></pre></td></tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
 function renderSchedules() {
   const host = $('#schedules-list');
   host.setAttribute('aria-busy', 'false');
-  $('#global-schedules-pause').textContent = state.schedulesPaused ? 'Resume all' : 'Pause all';
   host.innerHTML = state.schedules.length ? state.schedules.map(schedule => `<article class="schedule-card" data-schedule-id="${escapeHTML(schedule.id)}">
-    <div class="schedule-head"><div><span class="mono">S${escapeHTML(schedule.id)}</span><h3>${escapeHTML(schedule.title)}</h3></div><span class="state state-${escapeHTML(schedule.state)}">${escapeHTML(schedule.state)}</span></div>
-    <dl class="schedule-facts">
-      <div><dt>Cadence</dt><dd>${escapeHTML(schedule.cadence)}</dd></div>
-      <div><dt>Next run</dt><dd>${escapeHTML(schedule.next_run ? formatTime(schedule.next_run) : 'none')}</dd></div>
-      <div><dt>Last outcome</dt><dd>${escapeHTML(schedule.last_outcome || 'No runs yet.')}</dd></div>
-      <div><dt>Report mode</dt><dd>${escapeHTML(schedule.report_mode)}</dd></div>
-      ${schedule.kind === 'continue' ? `<div><dt>Runs used</dt><dd>${escapeHTML(schedule.run_count)} of ${escapeHTML(schedule.max_runs)}</dd></div>` : ''}
-    </dl>
-    <div class="scope-row">${scopeChips(schedule.scopes)}</div>
-    <div class="schedule-actions">
-      <a class="button button-quiet" href="/console/tasks/${encodeURIComponent(schedule.task_id)}" data-link>Task ledger</a>
-      <button class="button button-quiet" type="button" data-schedule-edit>Edit</button>
-      ${schedule.state === 'paused' ? '<button class="button button-quiet" type="button" data-schedule-action="resume">Resume</button>' : '<button class="button button-quiet" type="button" data-schedule-action="pause">Pause</button>'}
-      <button class="button button-quiet" type="button" data-schedule-action="run_now">Run now</button>
-      <button class="button button-danger" type="button" data-schedule-action="delete">Delete</button>
+    <div class="schedule-head">
+      <div><h3>${escapeHTML(schedule.title)}</h3></div>
+      <span class="state state-${stateClassForSchedule(schedule)}">${escapeHTML(schedule.state_label)}</span>
     </div>
+    <p class="schedule-cadence">${escapeHTML(schedule.cadence_text)}${schedule.next_run_text ? ` &middot; <span data-next-run-text>${escapeHTML(schedule.next_run_text)}</span> <span class="muted" data-next-run-rel="${escapeHTML(schedule.next_run_in_seconds ?? '')}" data-next-run-fetched="${Date.now()}"></span>` : ''}</p>
+    ${scheduleLastRunBlock(schedule)}
+    ${scheduleMissingBlock(schedule)}
+    ${scheduleApprovalBlock(schedule)}
+    <div class="scope-row">${scheduleCapabilitiesBlock(schedule)}</div>
+    <div class="schedule-actions">${scheduleActionButtons(schedule)}</div>
+    ${state.scheduleErrors.has(schedule.id) ? `<p class="schedule-inline-error">${escapeHTML(state.scheduleErrors.get(schedule.id))}</p>` : ''}
+    <details class="schedule-history" data-schedule-history="${escapeHTML(schedule.id)}">
+      <summary>Run history</summary>
+      ${scheduleHistoryBlock(schedule)}
+    </details>
   </article>`).join('') : '<div class="empty-state">No schedules.</div>';
+  tickScheduleClocks();
 }
+
+// Updates only the relative "in 3 h 20 m" text on a timer, without re-rendering the
+// whole list (which would collapse any open run-history <details>).
+function tickScheduleClocks() {
+  $$('[data-next-run-rel]').forEach(node => {
+    const base = Number(node.dataset.nextRunRel);
+    const fetchedAt = Number(node.dataset.nextRunFetched);
+    if (!Number.isFinite(base) || !Number.isFinite(fetchedAt)) { node.textContent = ''; return; }
+    const elapsed = (Date.now() - fetchedAt) / 1000;
+    node.textContent = `(${relativeFromSeconds(base - elapsed)})`;
+  });
+}
+setInterval(tickScheduleClocks, 30000);
 
 async function refreshSchedules({ throwOnError = false } = {}) {
   try {
-    const [payload, scopes] = await Promise.all([api('/schedules'), state.scopes.length ? Promise.resolve(state.scopes) : api('/scopes')]);
+    const payload = await api('/schedules');
     state.schedules = payload.schedules || [];
-    state.schedulesPaused = Boolean(payload.global_paused);
-    state.scopes = scopes;
+    state.scheduleKinds = payload.cadence_kinds || [];
+    state.capabilityOptions = payload.capability_options || [];
+    state.reportOptions = payload.report_options || [];
+    state.weekdayOptions = payload.weekdays || [];
     state.loaded.schedules = true; state.invalidated.schedules = false;
     renderSchedules();
   } catch (error) {
@@ -924,67 +1036,137 @@ async function refreshSchedules({ throwOnError = false } = {}) {
   }
 }
 
-function localInput(value) {
-  if (!value) return '';
-  const date = new Date(Number(value) * 1000);
-  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return shifted.toISOString().slice(0, 16);
+async function loadScheduleHistory(id) {
+  try {
+    const payload = await api(`/schedules/${encodeURIComponent(id)}/runs`);
+    state.scheduleHistory.set(id, payload.runs || []);
+  } catch (error) {
+    state.scheduleHistory.set(id, []);
+    showNotice(`History not loaded: ${error.message}`, 'error');
+  }
+  renderSchedules();
+  const details = $(`[data-schedule-history="${id}"]`);
+  if (details) details.open = true;
+}
+
+function cadenceFieldsHTML(kind) {
+  if (kind === 'once') return '<label>Date and time<input type="datetime-local" name="cadence_at"></label>';
+  if (kind === 'every') return `<label>Every<span class="cadence-every"><input type="number" min="1" name="cadence_every_value" value="1"><select name="cadence_every_unit"><option value="minutes">minutes</option><option value="hours">hours</option></select></span></label>`;
+  if (kind === 'daily' || kind === 'weekdays') return '<label>Time<input type="time" name="cadence_time"></label>';
+  if (kind === 'weekly') return `<label>Day<select name="cadence_day">${state.weekdayOptions.map(w => `<option value="${escapeHTML(w.value)}">${escapeHTML(w.label)}</option>`).join('')}</select></label><label>Time<input type="time" name="cadence_weekly_time"></label>`;
+  if (kind === 'cron') return '<label>Cron<input type="text" name="cadence_expr" placeholder="0 9 * * 1-5"></label>';
+  return '';
+}
+
+function renderCadenceOptions(selectedKind) {
+  const main = state.scheduleKinds.filter(k => k.kind !== 'cron');
+  const cron = state.scheduleKinds.find(k => k.kind === 'cron');
+  $('#schedule-cadence-options').innerHTML = main.map(k => `<div class="cadence-option">
+    <label><input type="radio" name="cadence_kind" value="${escapeHTML(k.kind)}" ${selectedKind === k.kind ? 'checked' : ''}>${escapeHTML(k.label)}</label>
+    <div class="cadence-fields" data-cadence-fields="${escapeHTML(k.kind)}" ${selectedKind === k.kind ? '' : 'hidden'}>${cadenceFieldsHTML(k.kind)}</div>
+  </div>`).join('');
+  $('#schedule-cadence-advanced').innerHTML = cron ? `<div class="cadence-option">
+    <label><input type="radio" name="cadence_kind" value="cron" ${selectedKind === 'cron' ? 'checked' : ''}>${escapeHTML(cron.label)}</label>
+    <div class="cadence-fields" data-cadence-fields="cron" ${selectedKind === 'cron' ? '' : 'hidden'}>${cadenceFieldsHTML('cron')}</div>
+  </div>` : '';
+  if (selectedKind === 'cron') $('.cadence-advanced').open = true;
+}
+
+function fillCadenceFields(form, kind, cadence = {}) {
+  if (!cadence) return;
+  if (kind === 'once' && cadence.at) form.cadence_at.value = String(cadence.at).slice(0, 16);
+  if (kind === 'every' && cadence.minutes != null) {
+    const minutes = Number(cadence.minutes);
+    if (minutes % 60 === 0 && minutes >= 60) { form.cadence_every_value.value = minutes / 60; form.cadence_every_unit.value = 'hours'; }
+    else { form.cadence_every_value.value = minutes; form.cadence_every_unit.value = 'minutes'; }
+  }
+  if ((kind === 'daily' || kind === 'weekdays') && cadence.time) form.cadence_time.value = cadence.time;
+  if (kind === 'weekly') { if (cadence.day) form.cadence_day.value = cadence.day; if (cadence.time) form.cadence_weekly_time.value = cadence.time; }
+  if (kind === 'cron' && cadence.expr) form.cadence_expr.value = cadence.expr;
 }
 
 function openScheduleEditor(schedule = null) {
-  $('#schedule-dialog-title').textContent = schedule ? `Edit S${schedule.id}` : 'New schedule';
+  $('#schedule-dialog-title').textContent = schedule ? `Edit ${schedule.title}` : 'New schedule';
   $('#schedule-id').value = schedule?.id || '';
   $('#schedule-title').value = schedule?.title || '';
   $('#schedule-prompt').value = schedule?.prompt || '';
-  $('#schedule-kind').value = schedule?.kind || 'once';
-  $('#schedule-report').value = schedule?.report_mode || 'always';
-  $('#schedule-run-at').value = localInput(schedule?.run_at);
-  $('#schedule-cron').value = schedule?.cron || '';
-  $('#schedule-timezone').value = schedule?.timezone || 'America/New_York';
-  $('#schedule-max-runs').value = schedule?.max_runs || 20;
-  $('#schedule-deadline').value = localInput(schedule?.deadline);
-  const selected = new Set(schedule?.scopes || []);
-  $('#schedule-scopes').innerHTML = state.scopes.map(scope => `<label class="scope-option"><input type="checkbox" name="scopes" value="${escapeHTML(scope.name)}" ${selected.has(scope.name) ? 'checked' : ''}><span class="scope-option-text"><span class="scope-name">${escapeHTML(scope.name)}</span><span class="scope-purpose">${escapeHTML(scope.purpose)}</span></span></label>`).join('');
+  renderCadenceOptions(schedule?.cadence_kind || state.scheduleKinds[0]?.kind || 'once');
+  const form = $('#schedule-form');
+  fillCadenceFields(form, schedule?.cadence_kind, schedule?.cadence);
+  $('#schedule-report-options').innerHTML = state.reportOptions.map((opt, index) => `<label class="radio-option"><input type="radio" name="report_every_time" value="${escapeHTML(opt.value)}" ${(schedule ? String(schedule.report_every_time) === String(opt.value) : index === 0) ? 'checked' : ''}>${escapeHTML(opt.label)}</label>`).join('');
+  $('#schedule-until').value = schedule?.until ? new Date(Number(schedule.until) * 1000).toISOString().slice(0, 10) : '';
+  const selected = new Set((schedule?.capabilities || []).map(c => c.scope));
+  $('#schedule-scopes').innerHTML = state.capabilityOptions.map(opt => `<label class="scope-option" title="${escapeHTML((opt.tools || []).join(', '))}"><input type="checkbox" name="capabilities" value="${escapeHTML(opt.scope)}" ${selected.has(opt.scope) ? 'checked' : ''}><span class="scope-option-text"><span class="scope-name">${escapeHTML(opt.label)}</span></span></label>`).join('');
   $('#schedule-dialog').showModal();
+}
+
+function cadencePayload(form) {
+  const kind = form.cadence_kind.value;
+  if (kind === 'once') return { at: form.cadence_at.value ? new Date(form.cadence_at.value).toISOString() : null };
+  if (kind === 'every') {
+    let minutes = Number(form.cadence_every_value.value || 0);
+    if (form.cadence_every_unit.value === 'hours') minutes *= 60;
+    return { minutes };
+  }
+  if (kind === 'daily' || kind === 'weekdays') return { time: form.cadence_time.value };
+  if (kind === 'weekly') return { day: form.cadence_day.value, time: form.cadence_weekly_time.value };
+  if (kind === 'cron') return { expr: form.cadence_expr.value };
+  return {};
 }
 
 async function saveSchedule(form) {
   const data = new FormData(form);
-  const payload = Object.fromEntries(data.entries());
-  payload.scopes = data.getAll('scopes');
-  payload.max_runs = Number(payload.max_runs || 20);
-  for (const key of ['run_at', 'deadline']) payload[key] = payload[key] ? new Date(payload[key]).toISOString() : null;
+  const cadenceKind = data.get('cadence_kind');
+  const reportValue = data.get('report_every_time');
+  const payload = {
+    title: data.get('title'),
+    prompt: data.get('prompt'),
+    cadence_kind: cadenceKind,
+    cadence: cadencePayload(form),
+    report_every_time: reportValue === 'true' ? true : reportValue === 'false' ? false : reportValue,
+    until: data.get('until') ? new Date(data.get('until')).toISOString() : null,
+    scopes: data.getAll('capabilities'),
+  };
   const id = $('#schedule-id').value;
   if (id) payload.id = Number(id);
   setFormBusy(form, true);
   try {
     const result = await post(id ? '/schedules/edit' : '/schedules', payload);
-    state.schedules = result.schedules || [];
-    state.schedulesPaused = Boolean(result.global_paused);
-    renderSchedules();
     $('#schedule-dialog').close();
-    showNotice('Schedule saved for approval.');
+    showNotice(result.message || 'Schedule saved.');
+    await refreshSchedules({ throwOnError: false });
   } catch (error) { showNotice(`Schedule not saved: ${error.message}`, 'error'); }
   finally { setFormBusy(form, false); }
 }
 
 async function scheduleAction(id, action) {
-  if (action === 'delete' && !window.confirm(`Delete schedule S${id}?`)) return;
+  state.scheduleErrors.delete(id);
   try {
-    const result = await post('/schedules/action', { id: Number(id), action });
-    state.schedules = result.schedules || [];
-    state.schedulesPaused = Boolean(result.global_paused);
-    renderSchedules();
-  } catch (error) { showNotice(`Schedule not changed: ${error.message}`, 'error'); }
+    if (action === 'approve' || action === 'reject') {
+      await post('/schedules/approve', { id: Number(id), approve: action === 'approve' });
+    } else {
+      await post('/schedules/action', { id: Number(id), action });
+    }
+    await refreshSchedules({ throwOnError: false });
+  } catch (error) {
+    if (error.status === 409) {
+      state.scheduleErrors.set(id, error.message);
+      renderSchedules();
+    } else {
+      showNotice(`Schedule not changed: ${error.message}`, 'error');
+    }
+  }
 }
 
-async function toggleGlobalSchedulesPause() {
+async function letItAddCapabilities(id) {
+  const schedule = state.schedules.find(s => s.id === id);
+  if (!schedule) return;
+  const scopes = [...new Set([...(schedule.capabilities || []).map(c => c.scope), ...(schedule.missing_capabilities || []).map(c => c.scope)])];
   try {
-    const result = await post('/schedules/global', { paused: !state.schedulesPaused });
-    state.schedules = result.schedules || [];
-    state.schedulesPaused = Boolean(result.global_paused);
-    renderSchedules();
-  } catch (error) { showNotice(`Could not change the global pause: ${error.message}`, 'error'); }
+    const result = await post('/schedules/edit', { id: Number(id), title: schedule.title, prompt: schedule.prompt, cadence_kind: schedule.cadence_kind, cadence: schedule.cadence, report_every_time: schedule.report_every_time, until: schedule.until || null, scopes });
+    showNotice(result.message || 'Updated.');
+    await refreshSchedules({ throwOnError: false });
+  } catch (error) { showNotice(`Could not change capabilities: ${error.message}`, 'error'); }
 }
 
 const settingSaveTimers = new Map();
@@ -1221,15 +1403,29 @@ document.addEventListener('click', event => {
   if (removeMemberButton) removeRoleMember(removeMemberButton.closest('[data-role-name]').dataset.roleName, removeMemberButton.dataset.removeMember);
   const taskButton = event.target.closest('[data-task-id]');
   if (taskButton) navigate(`/console/tasks/${encodeURIComponent(taskButton.dataset.taskId)}`);
-  const scheduleEditButton = event.target.closest('[data-schedule-edit]');
-  if (scheduleEditButton) {
-    const id = Number(scheduleEditButton.closest('[data-schedule-id]').dataset.scheduleId);
-    openScheduleEditor(state.schedules.find(schedule => schedule.id === id));
-  }
   const scheduleActionButton = event.target.closest('[data-schedule-action]');
   if (scheduleActionButton) {
     const id = Number(scheduleActionButton.closest('[data-schedule-id]').dataset.scheduleId);
-    scheduleAction(id, scheduleActionButton.dataset.scheduleAction);
+    if (scheduleActionButton.dataset.scheduleAction === 'edit') openScheduleEditor(state.schedules.find(schedule => schedule.id === id));
+    else scheduleAction(id, scheduleActionButton.dataset.scheduleAction);
+  }
+  const letItButton = event.target.closest('[data-schedule-let-it]');
+  if (letItButton) {
+    const id = Number(letItButton.closest('[data-schedule-id]').dataset.scheduleId);
+    letItAddCapabilities(id);
+  }
+  const runRow = event.target.closest('.schedule-run-row');
+  if (runRow) {
+    const runId = runRow.dataset.runId;
+    const scheduleId = Number(runRow.closest('[data-schedule-id]').dataset.scheduleId);
+    const detail = runRow.parentElement.querySelector(`[data-run-detail="${runId}"]`);
+    if (detail) {
+      detail.hidden = !detail.hidden;
+      if (!detail.hidden) {
+        const run = (state.scheduleHistory.get(scheduleId) || []).find(r => String(r.id) === runId);
+        detail.querySelector('.schedule-run-full').textContent = `${run?.final_status || ''}${run?.note ? `\n\nNOTE: ${run.note}` : ''}`;
+      }
+    }
   }
   const closeButton = event.target.closest('[data-close-dialog]');
   if (closeButton) $(`#${closeButton.dataset.closeDialog}`).close();
@@ -1390,7 +1586,17 @@ document.addEventListener('click',async event => {
 $('#sync-people')?.addEventListener('click', syncPeopleFromInkbox);
 $('#add-role')?.addEventListener('click', () => openRoleEditor());
 $('#add-schedule')?.addEventListener('click', () => openScheduleEditor());
-$('#global-schedules-pause')?.addEventListener('click', toggleGlobalSchedulesPause);
+// <details> toggle events do not bubble, so this listens in the capture phase instead.
+document.addEventListener('toggle', event => {
+  const details = event.target.closest?.('[data-schedule-history]');
+  if (!details || !details.open) return;
+  const id = Number(details.dataset.scheduleHistory);
+  if (!state.scheduleHistory.has(id)) loadScheduleHistory(id);
+}, true);
+document.addEventListener('change', event => {
+  if (!event.target.matches('#schedule-form [name=cadence_kind]')) return;
+  $$('#schedule-form .cadence-fields').forEach(el => { el.hidden = el.dataset.cadenceFields !== event.target.value; });
+});
 $$('[data-request-filter]').forEach(button => button.addEventListener('click', () => {
   state.requestFilter = button.dataset.requestFilter;
   $$('[data-request-filter]').forEach(item => item.classList.toggle('is-active', item === button));
