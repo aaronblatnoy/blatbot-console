@@ -324,8 +324,11 @@ function homeSourcesLine() {
 async function homeAction(action) {
   const target = action?.target || {};
   try {
+    let result = null;
     if (target.endpoint === 'requests/decide') {
       await post('/requests/decide', { id: target.id, decision: target.decision });
+    } else if (target.endpoint === 'requests/retry') {
+      result = await post('/requests/retry', { id: target.id });
     } else if (target.endpoint === 'schedules/approve') {
       await post('/schedules/approve', { id: target.id, approve: target.approve });
     } else if (target.endpoint === 'schedules/action') {
@@ -339,9 +342,12 @@ async function homeAction(action) {
       navigate(VIEW_PATHS.schedules);
       return;
     } else {
+      // An action target this build does not recognize must never fail
+      // silently -- say so inline rather than doing nothing.
+      showNotice(`I don't know how to do "${action?.label || 'that'}" yet.`, 'error');
       return;
     }
-    showNotice('Done.');
+    showNotice((result && result.message) || 'Done.');
     await refreshHome({ throwOnError: false });
   } catch (error) {
     showNotice(`Could not do that: ${error.message}`, 'error');

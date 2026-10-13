@@ -114,8 +114,8 @@ a { color: inherit; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
-.skip-link { position: fixed; left: 1rem; top: -4rem; z-index: 50; background: var(--text); color: var(--ink); padding: .6rem 1rem; }
-.skip-link:focus { top: 1rem; }
+.skip-link { position: fixed; left: 1rem; top: -4rem; z-index: 50; background: var(--text); color: var(--ink); padding: .6rem 1rem; visibility: hidden; }
+.skip-link:focus { top: 1rem; visibility: visible; }
 .mono, code, time, kbd, .scope-name, .person-key, .request-id { font-family: var(--sans); }
 .muted { color: var(--muted); }
 
