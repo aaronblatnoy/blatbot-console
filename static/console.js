@@ -756,7 +756,7 @@ function renderRoleRow(role) {
   return `<div class="role-row" data-role-name="${escapeHTML(role.name)}">
     <div class="role-row-head">
       <div class="role-row-title">${titleHTML}</div>
-      <button type="button" class="role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${role.member_count} members${isOpen ? ' &middot; hide' : ''}</button>
+      <button type="button" class="role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${role.member_count} ${role.member_count === 1 ? 'member' : 'members'}${isOpen ? ' &middot; hide' : ''}</button>
     </div>
     <p class="role-row-can-text">${escapeHTML(role.can_text || '')}</p>
     ${isOpen ? `<div class="role-row-body">
