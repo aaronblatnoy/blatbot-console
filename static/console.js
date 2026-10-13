@@ -689,13 +689,20 @@ function roleSystemControl(sv) {
   const levelOptions = levels.map(l => `<option value="${escapeHTML(l.value)}" ${l.value === sv.level ? 'selected' : ''}>${escapeHTML(l.label)}</option>`).join('');
   const customOption = sv.level === 'custom' ? `<option value="custom" selected hidden>${escapeHTML(sv.level_label)}</option>` : '';
   const sendControl = sv.send_label ? `<label class="role-system-send"><input type="checkbox" data-role-send data-system="${escapeHTML(sv.system)}" ${sv.send ? 'checked' : ''}> ${escapeHTML(sv.send_label)}</label>` : '';
+  // The custom-level phrases, when present, read as the plain-words explanation of
+  // what this grant currently does -- they must appear BEFORE the three-way control
+  // that would replace them, not after it.
+  const customPhrases = sv.level === 'custom' && (sv.phrases || []).length
+    ? `<ul class="role-custom-phrases">${sv.phrases.map(p => `<li>${escapeHTML(p)}</li>`).join('')}</ul>` : '';
   return `<div class="role-system-row">
     <div class="role-system-head">
       <span class="role-system-label">${escapeHTML(sv.system_label)}</span>
+    </div>
+    ${customPhrases}
+    <div class="role-system-controls">
       <select class="role-system-level-select" data-role-level data-system="${escapeHTML(sv.system)}" aria-label="${escapeHTML(sv.system_label)} level">${levelOptions}${customOption}</select>
       ${sendControl}
     </div>
-    ${sv.level === 'custom' && (sv.phrases || []).length ? `<ul class="role-custom-phrases">${sv.phrases.map(p => `<li>${escapeHTML(p)}</li>`).join('')}</ul>` : ''}
     ${sv.send ? '<p class="role-system-send-warning">Blatbot can send as itself here without Aaron seeing it first.</p>' : ''}
   </div>`;
 }
@@ -710,6 +717,8 @@ function roleNotesRow(role) {
   return `<div class="role-notes-row">
     <div class="role-notes-head">
       <span class="role-system-label">Notes</span>
+    </div>
+    <div class="role-system-controls">
       <select class="role-system-level-select" data-role-notes-level aria-label="Notes level">
         <option value="none" ${notes.level === 'none' ? 'selected' : ''}>None</option>
         <option value="all" ${notes.level === 'all' ? 'selected' : ''}>All notes</option>
@@ -735,11 +744,10 @@ function renderRoleRow(role) {
   const titleHTML = role.locked
     ? `<span class="role-name-input" aria-label="Role name">${escapeHTML(role.name)}</span><span class="role-row-locked-badge">Built in</span>`
     : `<input class="role-name-input" data-role-name-input data-original-name="${escapeHTML(role.name)}" value="${escapeHTML(role.name)}" aria-label="Role name">`;
-  const memberWord = role.member_count === 1 ? 'person' : 'people';
   return `<div class="role-row" data-role-name="${escapeHTML(role.name)}">
     <div class="role-row-head">
       <div class="role-row-title">${titleHTML}</div>
-      <button type="button" class="role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${role.member_count} ${memberWord}${isOpen ? ' &middot; hide' : ''}</button>
+      <button type="button" class="role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${role.member_count} members${isOpen ? ' &middot; hide' : ''}</button>
     </div>
     <p class="role-row-can-text">${escapeHTML(role.can_text || '')}</p>
     ${isOpen ? `<div class="role-row-body">
@@ -792,6 +800,12 @@ function renderRolesPage() {
   // fact about the system, not something this list can rearrange or edit.
   const ordered = [...(summary.roles || [])].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
   host.innerHTML = ordered.length ? ordered.map(renderRoleRow).join('') : '<div class="empty-state">No roles configured. People default to no permissions.</div>';
+  // Render the backend's own intro sentence when it sends one (field name not yet
+  // finalized upstream); otherwise keep the static fallback already in index.html --
+  // never build our own "scope list"-style copy here.
+  const introText = summary.intro_text || summary.intro || summary.page_intro;
+  const introLine = $('#roles-intro');
+  if (introLine && introText) introLine.textContent = introText;
   const sources = summary.sources || [];
   const sourcesLine = $('#roles-sources');
   if (sourcesLine) sourcesLine.textContent = sources.length ? sources.map(s => `${s.label}: ${s.detail}`).join(' · ') : '';

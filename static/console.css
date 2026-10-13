@@ -766,7 +766,8 @@ button.h-label:hover { border-color: var(--accent-bright); }
 .role-row-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .role-row-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .role-name-input { background: transparent; border: 1px solid transparent; color: var(--text); font: 700 15px/1.3 var(--sans); padding: 2px 6px; min-width: 60px; }
-.role-name-input:hover, .role-name-input:focus { border-color: var(--rule-strong); background: var(--panel-raised); outline: 0; }
+.role-name-input:hover, .role-name-input:focus { border-color: var(--rule-strong); background: var(--panel-raised); }
+.role-name-input:focus-visible { outline: 3px solid var(--waiting); outline-offset: 2px; }
 .role-row-can-text { margin: 6px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .role-row-toggle { background: transparent; border: 1px solid var(--rule-strong); color: var(--faint); padding: 5px 10px; font: 600 12px var(--sans); cursor: pointer; }
 .role-row-toggle:hover { border-color: var(--accent-bright); color: var(--accent-bright); }
@@ -816,3 +817,5 @@ button.h-label:hover { border-color: var(--accent-bright); }
 
 .settings-scopes-link { margin-top: 18px; font-size: 12px; }
 .settings-scopes-link a { color: var(--muted); }
+
+.role-system-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }

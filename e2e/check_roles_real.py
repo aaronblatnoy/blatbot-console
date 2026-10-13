@@ -57,7 +57,7 @@ def main():
             page.wait_for_selector(".role-row")
             page.screenshot(path=str(SHOTS / "roles-desktop.png"), full_page=True)
             rows = page.locator(".role-row")
-            expect(rows).to_have_count(3)  # commander (locked) + assistant + organizer
+            expect(rows).to_have_count(4)  # commander (locked) + assistant + organizer + archivist
             body_text = page.locator("#roles-list").inner_text()
             for raw in RAW_SCOPE_NAMES:
                 assert raw not in body_text, f"raw scope name {raw!r} leaked into Roles page text"
@@ -146,6 +146,88 @@ def main():
             page.screenshot(path=str(SHOTS / "roles-400.png"), full_page=True)
             page.set_viewport_size({"width": 1280, "height": 900})
 
+        def custom_level_phrases_render():
+            # 'archivist' holds only tamid_site_read (one read scope of a club_websites
+            # pair held without the other), which the backend reports as a 'custom'
+            # level -- its plain-words phrases must render BEFORE the three-way choice
+            # control that would replace them, not after it.
+            goto("roles")
+            page.wait_for_selector(".role-row")
+            row = page.locator('[data-role-name="archivist"]')
+            row.locator("[data-toggle-role]").click()
+            page.wait_for_selector('[data-role-name="archivist"] .role-custom-phrases')
+            system_row = row.locator(".role-system-row").filter(has=page.locator(".role-custom-phrases")).first
+            phrases = system_row.locator(".role-custom-phrases li")
+            expect(phrases.first).to_be_visible()
+            phrases_text = system_row.locator(".role-custom-phrases").inner_text()
+            assert phrases_text.strip(), "custom phrases list is empty"
+            for raw in RAW_SCOPE_NAMES + ["tamid_site_read", "tamid_site_write"]:
+                assert raw not in phrases_text, f"raw scope name {raw!r} leaked into custom phrases"
+            phrases_box = system_row.locator(".role-custom-phrases").bounding_box()
+            controls_box = system_row.locator(".role-system-controls").bounding_box()
+            assert phrases_box is not None and controls_box is not None
+            assert phrases_box["y"] < controls_box["y"], (
+                f"phrases ({phrases_box['y']}) must render above the level control ({controls_box['y']})"
+            )
+            page.screenshot(path=str(SHOTS / "role-custom.png"), full_page=True)
+
+        def focus_accessibility():
+            # Every control on the Roles page and the person panel must be reachable
+            # by Tab, in an order that follows the visible layout, with a visible
+            # focus state -- not relying on a default the stylesheet may suppress.
+            goto("roles")
+            page.wait_for_selector(".role-row")
+            row = page.locator('[data-role-name="assistant"]')
+            row.locator("[data-toggle-role]").click()
+            page.wait_for_selector('[data-role-name="assistant"] [data-role-level]')
+            name_input = row.locator("[data-role-name-input]")
+            name_input.focus()
+            seen_tags = []
+            for _ in range(8):
+                outline = page.evaluate("""
+                    () => {
+                        const el = document.activeElement;
+                        const cs = getComputedStyle(el);
+                        return { tag: el.tagName, cls: el.className, outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth };
+                    }
+                """)
+                seen_tags.append(outline)
+                if outline["tag"] == "BODY":
+                    break  # tabbed past the end of this row's own controls
+                visible_outline = outline["outlineStyle"] != "none" and outline["outlineWidth"] != "0px"
+                assert visible_outline, f"no visible focus outline on {outline['tag']}.{outline['cls']}"
+                page.keyboard.press("Tab")
+            goto("people")
+            page.wait_for_selector(".person-row")
+            page.locator(".person-row", has_text="Jordan Avery").first.click()
+            page.wait_for_selector(".person-role-chips")
+            page.locator(".person-role-chips [data-add-person-role]").focus()
+            outline = page.evaluate("""
+                () => {
+                    const el = document.activeElement;
+                    const cs = getComputedStyle(el);
+                    return cs.outlineStyle !== 'none' && cs.outlineWidth !== '0px';
+                }
+            """)
+            assert outline, "no visible focus outline on the person-panel add-role select"
+
+        def system_row_stacks_400():
+            page.set_viewport_size({"width": 400, "height": 900})
+            goto("roles")
+            page.wait_for_selector(".role-row")
+            row = page.locator('[data-role-name="assistant"]')
+            row.locator("[data-toggle-role]").click()
+            page.wait_for_selector('[data-role-name="assistant"] [data-role-level]')
+            system_row = row.locator(".role-system-row").first
+            label_box = system_row.locator(".role-system-label").bounding_box()
+            controls_box = system_row.locator(".role-system-controls").bounding_box()
+            assert label_box is not None and controls_box is not None
+            assert controls_box["y"] >= label_box["y"] + label_box["height"] - 1, (
+                "the system label and its control sit side by side at 400px instead of stacked: "
+                f"label bottom={label_box['y'] + label_box['height']}, controls top={controls_box['y']}"
+            )
+            page.set_viewport_size({"width": 1280, "height": 900})
+
         check(1, "Roles page renders from /roles/summary with no raw scope names", roles_page_renders)
         check(2, "Changing a level calls set_level and updates the row's sentence", role_expand_and_change_level)
         check(3, "Who-can search finds a seeded match", who_can_search)
@@ -155,6 +237,9 @@ def main():
         check(7, "No horizontal scroll at 400px on Roles/People/Settings", viewport_400)
         check(8, "No browser console errors during the walkthrough",
               lambda: (_ for _ in ()).throw(AssertionError(console_errors)) if console_errors else None)
+        check(9, "Custom-level phrases render before the three-way control", custom_level_phrases_render)
+        check(10, "Every Roles/person-panel control is Tab-reachable with a visible focus state", focus_accessibility)
+        check(11, "An expanded system row stacks label above control at 400px", system_row_stacks_400)
 
         browser.close()
 

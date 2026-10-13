@@ -70,6 +70,11 @@ def _seed(store: Store) -> None:
         ["tamid_drive_write"],
         note="Updates the TAMID workspace (custom grant: write without the read scope).",
     )
+    store.set_role(
+        "archivist",
+        ["tamid_site_read"],
+        note="Reads one of two club-website admins (custom grant: one read scope of a pair).",
+    )
 
     jordan = store.create_person(display="Jordan Avery", role="assistant",
                                   scopes=[], note="Made-up fixture person for e2e.")
@@ -80,6 +85,9 @@ def _seed(store: Store) -> None:
     store.set_trust("riley@example.test", person="Riley Chen", role="organizer", scopes=[])
 
     store.create_person(display="Sam Okafor", role="", scopes=[], note="No roles yet.")
+
+    store.create_person(display="Morgan Ellis", role="archivist", scopes=[], note="Made-up fixture person for e2e.")
+    store.set_trust("morgan@example.test", person="Morgan Ellis", role="archivist", scopes=[])
 
 
 async def run(host: str, port: int, allowed_origins: str, db_path: str) -> None:
