@@ -738,12 +738,21 @@ function roleMembersBlock(role) {
   </div>`;
 }
 
+function roleDeleteBlock(role) {
+  if (!(role.actions || []).includes('delete')) return '';
+  return `<div class="role-delete-block">
+    <button type="button" class="button button-quiet" data-delete-role-preview>Delete role</button>
+    <div class="role-delete-confirm" hidden></div>
+  </div>`;
+}
+
 function renderRoleRow(role) {
   const isOpen = state.roleOpen.has(role.name);
   const affects = state.roleAffectsText.get(role.name);
-  const titleHTML = role.locked
-    ? `<span class="role-name-input" aria-label="Role name">${escapeHTML(role.name)}</span><span class="role-row-locked-badge">Built in</span>`
-    : `<input class="role-name-input" data-role-name-input data-original-name="${escapeHTML(role.name)}" value="${escapeHTML(role.name)}" aria-label="Role name">`;
+  const canRename = (role.actions || []).includes('rename');
+  const titleHTML = canRename
+    ? `<input class="role-name-input" data-role-name-input data-original-name="${escapeHTML(role.name)}" value="${escapeHTML(role.name)}" aria-label="Role name">`
+    : `<span class="role-name-input" aria-label="Role name">${escapeHTML(role.name)}</span>${role.locked ? '<span class="role-row-locked-badge">Built in</span>' : ''}`;
   return `<div class="role-row" data-role-name="${escapeHTML(role.name)}">
     <div class="role-row-head">
       <div class="role-row-title">${titleHTML}</div>
@@ -754,6 +763,7 @@ function renderRoleRow(role) {
       ${roleMembersBlock(role)}
       ${role.locked ? '' : `<div class="role-systems">${(role.systems || []).map(roleSystemControl).join('')}</div>`}
       ${role.locked ? '' : roleNotesRow(role)}
+      ${roleDeleteBlock(role)}
     </div>` : ''}
     ${affects ? `<p class="role-affects-text${affects.fading ? ' is-fading' : ''}">${escapeHTML(affects.text)}</p>` : ''}
   </div>`;
@@ -895,6 +905,49 @@ async function removeRoleMemberByPerson(name, personId) {
     state.roleOpen.add(name);
     await refreshRoles();
   } catch { /* setPersonRole already reported the error */ }
+}
+
+async function createRole(name) {
+  name = (name || '').trim();
+  if (!name) return;
+  try {
+    await post('/roles', { name, scopes: [], note: '' });
+    state.roleOpen.add(name.toLowerCase());
+    await refreshRoles();
+    showNotice(`Created ${name}.`);
+  } catch (error) { showNotice(`Could not create role: ${error.message}`, 'error'); }
+}
+
+async function showRoleDeletePreview(name) {
+  const row = $(`[data-role-name="${CSS.escape(name)}"]`);
+  if (!row) return;
+  const confirmHost = row.querySelector('.role-delete-confirm');
+  const trigger = row.querySelector('[data-delete-role-preview]');
+  if (!confirmHost) return;
+  try {
+    const preview = await api(`/roles/delete_preview?role=${encodeURIComponent(name)}`);
+    confirmHost.innerHTML = `<p class="role-delete-confirm-text">${escapeHTML(preview.text || '')}</p><div class="role-delete-confirm-actions"><button type="button" class="button button-danger" data-confirm-delete-role="${escapeHTML(name)}">Confirm delete</button><button type="button" class="button button-quiet" data-cancel-delete-role>Cancel</button></div>`;
+    confirmHost.hidden = false;
+    if (trigger) trigger.hidden = true;
+  } catch (error) { showNotice(`Could not load delete preview: ${error.message}`, 'error'); }
+}
+
+function hideRoleDeletePreview(name) {
+  const row = $(`[data-role-name="${CSS.escape(name)}"]`);
+  if (!row) return;
+  const confirmHost = row.querySelector('.role-delete-confirm');
+  const trigger = row.querySelector('[data-delete-role-preview]');
+  if (confirmHost) { confirmHost.hidden = true; confirmHost.innerHTML = ''; }
+  if (trigger) trigger.hidden = false;
+}
+
+async function confirmDeleteRole(name) {
+  try {
+    await post('/roles/delete', { name });
+    state.roleOpen.delete(name);
+    showNotice(`Deleted ${name}.`);
+    await refreshRoles();
+  } catch (error) { showNotice(`Could not delete role: ${error.message}`, 'error'); }
 }
 
 function setFormBusy(form, busy) {
@@ -1555,6 +1608,12 @@ document.addEventListener('click', event => {
   if (removeRoleMemberButton) removeRoleMemberByPerson(removeRoleMemberButton.closest('[data-role-name]').dataset.roleName, removeRoleMemberButton.dataset.removeRoleMember);
   const removePersonRoleButton = event.target.closest('[data-remove-person-role]');
   if (removePersonRoleButton) setPersonRole(state.selectedPerson, removePersonRoleButton.dataset.removePersonRole, false);
+  const deleteRolePreviewButton = event.target.closest('[data-delete-role-preview]');
+  if (deleteRolePreviewButton) showRoleDeletePreview(deleteRolePreviewButton.closest('[data-role-name]').dataset.roleName);
+  const confirmDeleteRoleButton = event.target.closest('[data-confirm-delete-role]');
+  if (confirmDeleteRoleButton) confirmDeleteRole(confirmDeleteRoleButton.dataset.confirmDeleteRole);
+  const cancelDeleteRoleButton = event.target.closest('[data-cancel-delete-role]');
+  if (cancelDeleteRoleButton) hideRoleDeletePreview(cancelDeleteRoleButton.closest('[data-role-name]').dataset.roleName);
   const taskButton = event.target.closest('[data-task-id]');
   if (taskButton) navigate(`/console/tasks/${encodeURIComponent(taskButton.dataset.taskId)}`);
   const scheduleActionButton = event.target.closest('[data-schedule-action]');
@@ -1600,6 +1659,11 @@ document.addEventListener('submit', event => {
   event.preventDefault();
   if (event.target.id === 'person-form') savePerson(event.target);
   if (event.target.id === 'schedule-form') saveSchedule(event.target);
+  if (event.target.id === 'new-role-form') {
+    const input = event.target.querySelector('[name="name"]');
+    createRole(input.value);
+    event.target.reset();
+  }
 });
 
 document.addEventListener('focusout', event => {

@@ -228,6 +228,37 @@ def main():
             )
             page.set_viewport_size({"width": 1280, "height": 900})
 
+        def locked_role_has_no_rename_or_delete():
+            goto("roles")
+            page.wait_for_selector(".role-row")
+            commander_row = page.locator('[data-role-name="commander"]')
+            commander_row.locator("[data-toggle-role]").click()
+            page.wait_for_timeout(200)
+            expect(commander_row.locator("[data-role-name-input]")).to_have_count(0)
+            expect(commander_row.locator("[data-delete-role-preview]")).to_have_count(0)
+
+        def create_and_delete_role():
+            goto("roles")
+            page.wait_for_selector(".role-row")
+            before_count = page.locator(".role-row").count()
+            page.fill("#new-role-form .new-role-name", "temp-reviewer")
+            page.click('#new-role-form button[type="submit"]')
+            page.wait_for_selector('[data-role-name="temp-reviewer"]')
+            page.wait_for_load_state("networkidle")
+            expect(page.locator(".role-row")).to_have_count(before_count + 1)
+            new_row = page.locator('[data-role-name="temp-reviewer"]')
+            # Created expanded, so its abilities can be set right away.
+            expect(new_row.locator("[data-role-level]").first).to_be_visible()
+            new_row.locator("[data-delete-role-preview]").click()
+            page.wait_for_selector('[data-role-name="temp-reviewer"] .role-delete-confirm:not([hidden])')
+            confirm_text = new_row.locator(".role-delete-confirm-text").inner_text()
+            assert "temp-reviewer" in confirm_text
+            assert "nobody" in confirm_text or "no one" in confirm_text
+            new_row.locator("[data-confirm-delete-role]").click()
+            page.wait_for_selector('[data-role-name="temp-reviewer"]', state="detached")
+            page.wait_for_load_state("networkidle")
+            expect(page.locator(".role-row")).to_have_count(before_count)
+
         check(1, "Roles page renders from /roles/summary with no raw scope names", roles_page_renders)
         check(2, "Changing a level calls set_level and updates the row's sentence", role_expand_and_change_level)
         check(3, "Who-can search finds a seeded match", who_can_search)
@@ -240,6 +271,8 @@ def main():
         check(9, "Custom-level phrases render before the three-way control", custom_level_phrases_render)
         check(10, "Every Roles/person-panel control is Tab-reachable with a visible focus state", focus_accessibility)
         check(11, "An expanded system row stacks label above control at 400px", system_row_stacks_400)
+        check(12, "The locked role shows no rename input and no delete control", locked_role_has_no_rename_or_delete)
+        check(13, "Creating a role shows it expanded; delete requires a preview + confirm", create_and_delete_role)
 
         browser.close()
 

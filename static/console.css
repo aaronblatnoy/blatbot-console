@@ -819,3 +819,12 @@ button.h-label:hover { border-color: var(--accent-bright); }
 .settings-scopes-link a { color: var(--muted); }
 
 .role-system-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+
+.new-role-form { display: flex; gap: 8px; align-items: center; }
+.new-role-name { background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); padding: 6px 10px; min-width: 160px; }
+.new-role-name:focus-visible { outline: 3px solid var(--waiting); outline-offset: 2px; }
+
+.role-delete-block { padding-top: 10px; border-top: 1px solid var(--rule); }
+.role-delete-confirm { margin-top: 8px; padding: 10px; background: var(--waiting-dim); border: 1px solid var(--waiting); display: grid; gap: 8px; }
+.role-delete-confirm-text { margin: 0; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
+.role-delete-confirm-actions { display: flex; gap: 8px; }
