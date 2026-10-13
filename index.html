@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#00010d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=sched2">
+  <link rel="stylesheet" href="/static/console.css?v=roles1">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -22,7 +22,6 @@
       <a href="/console/requests" data-route="requests">Requests <span id="nav-waiting-count" class="nav-count" hidden></span></a>
       <a href="/console/people" data-route="people">People</a>
       <a href="/console/roles" data-route="roles">Roles</a>
-      <a href="/console/scopes" data-route="scopes">Scopes</a>
       <a href="/console/tasks" data-route="tasks">Tasks</a>
       <a href="/console/schedules" data-route="schedules">Schedules</a>
       <a href="/console/health" data-route="health">Health</a>
@@ -35,7 +34,6 @@
         <option value="/console/requests">Requests</option>
         <option value="/console/people">People</option>
         <option value="/console/roles">Roles</option>
-        <option value="/console/scopes">Scopes</option>
         <option value="/console/tasks">Tasks</option>
         <option value="/console/schedules">Schedules</option>
         <option value="/console/health">Health</option>
@@ -138,15 +136,18 @@
     <section id="roles" class="section" data-view="roles" aria-labelledby="roles-title" hidden>
       <div class="section-heading">
         <div>
-          <h2 id="roles-title">Roles</h2>
-          <p class="section-summary">A role's scopes run for every person who holds it. A role with a send scope is called out: Blatbot can speak as itself for that person without Aaron seeing it first.</p>
-        </div>
-        <div class="heading-actions">
-          <span id="roles-count" class="summary-meta">—</span>
-          <button id="add-role" class="button button-primary" type="button">Add role</button>
+          <h2 id="roles-title">Who can do what</h2>
+          <p class="section-summary">Each role is a plain sentence, not a scope list. Expand a role to change what its members can do without asking.</p>
         </div>
       </div>
+      <label class="search-field roles-who-can-field">
+        <span class="visually-hidden">Who can</span>
+        <span aria-hidden="true">/</span>
+        <input id="who-can-search" type="search" placeholder="Who can ... (for example send email)" autocomplete="off">
+      </label>
+      <div id="who-can-results" class="who-can-results" hidden></div>
       <div id="roles-list" class="roles-list" aria-busy="true"></div>
+      <p id="roles-sources" class="home-sources"></p>
     </section>
 
     <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
@@ -200,6 +201,7 @@
         </div>
       </div>
       <div id="settings-list" class="settings-list" aria-live="polite" aria-busy="true"></div>
+      <p class="settings-scopes-link"><a href="/console/scopes" data-route="scopes">Technical view of every permission</a></p>
     </section>
   </main>
 
@@ -260,6 +262,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=sched2"></script>
+  <script type="module" src="/static/console.js?v=roles1"></script>
 </body>
 </html>

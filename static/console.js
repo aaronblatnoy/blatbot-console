@@ -13,6 +13,11 @@ const state = {
   editorPerson: null,
   ownEvents: [],
   roles: [],
+  rolesSummary: null,
+  whoCanMatches: [],
+  roleOpen: new Set(),
+  roleAffectsText: new Map(),
+  roleAffectsTimers: new Map(),
   scopes: [],
   scopesBreakdown: [],
   requests: [],
@@ -442,20 +447,11 @@ async function refreshRequests({ throwOnError = false } = {}) {
   }
 }
 
-function renderScopeGroups(selected = new Set()) {
-  const groups = state.scopes.reduce((map, scope) =>
-    map.set(scope.group || 'Other', [...(map.get(scope.group || 'Other') || []), scope]), new Map());
-  return [...groups.entries()].map(([group, scopes]) => `<fieldset class="scope-group">
-    <legend>${escapeHTML(group)}</legend><div class="scope-options">${scopes.map(scope => `<label class="scope-option">
-      <input type="checkbox" name="scopes" value="${escapeHTML(scope.name)}" ${selected.has(scope.name) ? 'checked' : ''}>
-      <span class="scope-option-text"><span class="scope-name">${escapeHTML(scope.name)}<span class="scope-detail-kind is-${escapeHTML(scope.kind || (scope.read ? 'read' : 'write'))}">${escapeHTML(scope.read ? 'read' : (scope.kind || 'write'))}</span></span><span class="scope-purpose">${escapeHTML(scope.description || scope.purpose || `${scope.tools_count || 0} tools`)}</span></span>
-    </label>`).join('')}</div></fieldset>`).join('');
-}
-
 async function refreshRoles({ throwOnError = false } = {}) {
   try {
-    const [roles, scopes] = await Promise.all([api('/roles'), api('/scopes')]);
-    state.roles = roles; state.scopes = scopes;
+    const [summary, directory] = await Promise.all([api('/roles/summary'), api('/people/directory')]);
+    state.rolesSummary = summary;
+    state.people = directory.people || []; state.unassigned = directory.unlinked || []; state.contactKinds = directory.contact_kinds || [];
     state.loaded.roles = true;
     state.invalidated.roles = false;
     renderRolesPage();
@@ -466,20 +462,15 @@ async function refreshRoles({ throwOnError = false } = {}) {
 }
 
 function heldRoles(value) { return String(value || '').split(',').map(n => n.trim()).filter(Boolean); }
-function rolePicker(p, inputName) {
-  const have = new Set(heldRoles(p?.role));
-  const items = state.roles.map(role => {
-    if (role.locked) {
-      // A locked role is never offered as a choice for anyone -- it cannot be
-      // granted or removed here. The one person who holds it (flagged by the
-      // API, never by matching the role's name) sees it as a fixed fact about
-      // their own entry; nobody else sees it at all.
-      if (!p?.commander) return '';
-      return `<label class="person-role-choice person-role-locked"><input type="checkbox" name="${inputName}" value="${escapeHTML(role.name)}" checked disabled><span>${escapeHTML(role.name)}</span><span class="muted person-role-locked-hint">cannot be changed here</span></label>`;
-    }
-    return `<label class="person-role-choice"><input type="checkbox" name="${inputName}" value="${escapeHTML(role.name)}" ${have.has(role.name) ? 'checked' : ''}><span>${escapeHTML(role.name)}</span></label>`;
-  }).filter(Boolean);
-  return items.join('') || '<span class="muted">No roles configured.</span>';
+function addableRoleOptions(p) {
+  const held = new Set((p?.role_badges || []).map(rb => rb.name));
+  return (state.rolesSummary?.roles || []).filter(r => !r.locked && !held.has(r.name))
+    .map(r => `<option value="${escapeHTML(r.name)}">${escapeHTML(r.name)}</option>`).join('');
+}
+function personRoleChips(p) {
+  const chips = (p.role_badges || []).map(rb => `<span class="person-role-chip${rb.locked ? ' person-role-chip-locked' : ''}">${escapeHTML(rb.name)}${rb.locked ? '' : `<button type="button" class="person-role-chip-remove" data-remove-person-role="${escapeHTML(rb.name)}" aria-label="Remove ${escapeHTML(rb.name)} from ${escapeHTML(personName(p))}">&times;</button>`}</span>`).join('');
+  const addControl = p.commander ? '' : `<span class="person-role-add"><select data-add-person-role aria-label="Add a role"><option value="">Add role&hellip;</option>${addableRoleOptions(p)}</select></span>`;
+  return `<div class="person-role-chips">${chips || '<span class="muted">No roles.</span>'}${addControl}</div>`;
 }
 const personName = p => p?.display || '(unnamed)';
 const contactsOf = p => (p?.contacts || []).filter(c => c.kind !== 'name');
@@ -510,34 +501,24 @@ function renderPersonEditor() {
   if (!p) { $('#person-editor').innerHTML = '<div class="empty-state">Select a person</div>'; return; }
   const contacts = contactsOf(p);
   $('#person-editor').innerHTML = `<h3>Person</h3><p id="person-external-change" hidden>Changed elsewhere, <button type="button" class="button button-quiet" data-reload-person>reload</button></p>
-    <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><fieldset class="person-role-group"><legend>Roles</legend><div class="person-role-choices">${rolePicker(p, 'role')}</div></fieldset><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><span id="person-dirty-label" hidden>Unsaved changes</span><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button></div></form>
+    <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><span id="person-dirty-label" hidden>Unsaved changes</span><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button></div></form>
     <h3>Contacts</h3><div id="person-contacts">${contacts.length ? contacts.map(c => `<div class="person-contact" data-contact-id="${escapeHTML(c.id)}"><select aria-label="Contact type" data-contact-kind>${kindOptions(c.kind)}</select><input aria-label="Contact value" data-contact-value value="${escapeHTML(c.raw_value || c.value)}" placeholder="${escapeHTML(contactKind(c.kind).hint)}"><button class="button button-quiet" type="button" data-remove-contact>Remove</button><div class="contact-status" role="status"></div></div>`).join('') : '<p class="muted">No contacts. Add one below or assign one from the unassigned list.</p>'}</div>
     <form id="contact-add-form" class="person-contact"><select aria-label="New contact type" name="kind">${kindOptions()}</select><input name="value" aria-label="New contact value" required placeholder="${escapeHTML((state.contactKinds || []).find(k => k.addable)?.hint || '')}"><button class="button button-quiet" type="submit">Add</button><div class="contact-status" role="status"></div></form>
-    <div class="person-access"><h3>Can act without asking</h3>${p.commander ? '<p class="person-commander-note">Everything, on verified channels only.</p>' : ((p.effective_scopes || []).length ? `<ul>${p.effective_scopes.map(s => `<li class="scope-name">${escapeHTML(s)}</li>`).join('')}</ul>` : '<p class="muted">No scopes granted.</p>')}${(!p.commander && p.scopes?.length) ? `<p class="muted">plus ${p.scopes.length} direct grants</p>` : ''}<a href="/console/roles" data-route="roles">Edit roles</a></div>
+    <div class="person-access"><h3>Roles</h3>${personRoleChips(p)}<p class="person-can-text">${escapeHTML(p.can_text || '')}</p><p class="person-can-text-link"><a href="/console/roles" data-route="roles">Change what a role can do</a></p></div>
     ${p.commander ? '<p class="person-commander-note">This person cannot be deleted or merged into another person here.</p>' : `<details class="person-advanced"><summary>Move or merge</summary><form id="contact-move-form"><label class="field">Contact<select name="contact_id" required><option value="">Choose contact</option>${contacts.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(contactKind(c.kind).label + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select></label><label class="field">To person (or Unassigned)<select name="person_id"><option value="">Unassigned</option>${personOptions(p.id)}</select></label><button class="button button-quiet" type="submit">Move</button></form><form id="person-merge-form"><label class="field">This is the same person as<select name="keep_id" required><option value="">Choose person</option>${personOptions(p.id)}</select></label><p class="muted">Their contacts move to that person. Roles and note are not combined.</p><button class="button button-quiet" type="submit">Merge into them</button></form></details><button class="button button-danger" type="button" data-delete-person>Delete person</button>`}`;
-}
-function submittedRoles(data, p) {
-  // The locked role's checkbox is disabled when it is checked (the commander
-  // person), so the browser never includes it in FormData -- add it back so
-  // dirty-checking and saving never mistake "the browser didn't submit it"
-  // for "the person asked to remove it".
-  const roles = data.getAll('role');
-  const lockedRole = (state.roles.find(role => role.locked) || {}).name;
-  if (p?.commander && lockedRole && !roles.includes(lockedRole)) roles.push(lockedRole);
-  return roles;
 }
 function markPersonDirty() {
   const form = $('#person-form'); if (!form || !state.editorPerson) return;
   const data = new FormData(form), p = state.editorPerson;
-  state.personDirty = data.get('display') !== (p.display || '') || data.get('note') !== (p.note || '') || submittedRoles(data, p).sort().join(',') !== heldRoles(p.role).sort().join(',');
+  state.personDirty = data.get('display') !== (p.display || '') || data.get('note') !== (p.note || '');
   $('button[type="submit"]',form).disabled = !state.personDirty;
   $('[data-discard-person]',form).disabled = !state.personDirty;
   $('#person-dirty-label').hidden = !state.personDirty;
 }
 async function refreshPeople({throwOnError = false, external = false, localContacts = false} = {}) {
   try {
-    const [directory,roles] = await Promise.all([api('/people/directory'),api('/roles')]);
-    state.people = directory.people || []; state.unassigned = directory.unlinked || []; state.contactKinds = directory.contact_kinds || []; state.roles = roles;
+    const [directory,summary] = await Promise.all([api('/people/directory'),api('/roles/summary')]);
+    state.people = directory.people || []; state.unassigned = directory.unlinked || []; state.contactKinds = directory.contact_kinds || []; state.rolesSummary = summary;
     state.loaded.people = true; state.invalidated.people = false; renderPeople();
     if (state.personDirty) {
       if (localContacts) {
@@ -570,7 +551,7 @@ function handlePeopleEvent(event) {
 async function savePerson(form) {
   if(!state.personDirty || form.dataset.saving) return;
   const id = state.selectedPerson, data = new FormData(form);
-  const body = {id,display:data.get('display'),role:submittedRoles(data, state.editorPerson).join(', '),note:data.get('note'),scopes:state.people.find(p => p.id === id)?.scopes || state.editorPerson.scopes || []};
+  const body = {id,display:data.get('display'),note:data.get('note'),scopes:state.people.find(p => p.id === id)?.scopes || state.editorPerson.scopes || []};
   form.dataset.saving = '1'; setFormBusy($('#person-editor'),true);
   try {
     const result = await peoplePost('/people/update',body,e => e.id === id && e.action === 'updated');
@@ -618,6 +599,21 @@ async function updateContact(row) {
 }
 async function syncPeopleFromInkbox() {
   try { await post('/people/sync',{}); await refreshPeople({external:true}); invalidateHome(); showNotice('Refreshed from Inkbox.'); } catch(error) { showNotice(error.message,'error'); }
+}
+
+async function setPersonRole(personId, roleName, add) {
+  const p = state.people.find(pp => pp.id === personId);
+  if (!p) return;
+  const current = heldRoles(p.role);
+  const next = add ? [...new Set([...current, roleName])] : current.filter(n => n !== roleName);
+  try {
+    const result = await peoplePost('/people/update', { id: personId, role: next.join(', ') }, e => e.id === personId && e.action === 'updated');
+    const person = result.person || result;
+    state.people = state.people.map(pp => pp.id === person.id ? person : pp);
+    if (state.selectedPerson === personId) { state.editorPerson = structuredClone(person); state.personDirty = false; renderPersonEditor(); }
+    renderPeople();
+    return person;
+  } catch (error) { showNotice(`Could not change roles: ${error.message}`, 'error'); throw error; }
 }
 
 
@@ -683,110 +679,208 @@ function renderScopesBreakdown() {
   host.innerHTML = `<div class="h-tree">${treeNode('Blatbot', systems, { cls: 'h-rootnode' })}</div>`;
 }
 
-function scopeList(scopes = []) {
-  return scopes.length
-    ? `<ul class="scope-kind-list">${scopes.map(s => `<li><span class="scope-name">${escapeHTML(s.name)}</span><span class="scope-purpose">${escapeHTML(s.purpose || '')}</span></li>`).join('')}</ul>`
-    : '<p class="muted">None</p>';
+function systemBySummary(name) {
+  return (state.rolesSummary?.systems || []).find(s => s.system === name);
+}
+
+function roleSystemControl(sv) {
+  const sysDef = systemBySummary(sv.system);
+  const levels = sysDef?.levels || [];
+  const levelOptions = levels.map(l => `<option value="${escapeHTML(l.value)}" ${l.value === sv.level ? 'selected' : ''}>${escapeHTML(l.label)}</option>`).join('');
+  const customOption = sv.level === 'custom' ? `<option value="custom" selected hidden>${escapeHTML(sv.level_label)}</option>` : '';
+  const sendControl = sv.send_label ? `<label class="role-system-send"><input type="checkbox" data-role-send data-system="${escapeHTML(sv.system)}" ${sv.send ? 'checked' : ''}> ${escapeHTML(sv.send_label)}</label>` : '';
+  return `<div class="role-system-row">
+    <div class="role-system-head">
+      <span class="role-system-label">${escapeHTML(sv.system_label)}</span>
+      <select class="role-system-level-select" data-role-level data-system="${escapeHTML(sv.system)}" aria-label="${escapeHTML(sv.system_label)} level">${levelOptions}${customOption}</select>
+      ${sendControl}
+    </div>
+    ${sv.level === 'custom' && (sv.phrases || []).length ? `<ul class="role-custom-phrases">${sv.phrases.map(p => `<li>${escapeHTML(p)}</li>`).join('')}</ul>` : ''}
+    ${sv.send ? '<p class="role-system-send-warning">Blatbot can send as itself here without Aaron seeing it first.</p>' : ''}
+  </div>`;
+}
+
+function roleNotesRow(role) {
+  const folders = state.rolesSummary?.note_folders || [];
+  const notes = role.notes || { level: 'none', folders: [] };
+  const folderList = notes.level === 'some' ? `<ul class="role-notes-folders">${folders.map(f => {
+    const on = (notes.folders || []).find(x => x.scope === f.scope)?.on;
+    return `<li><label><input type="checkbox" data-role-note-folder data-scope="${escapeHTML(f.scope)}" ${on ? 'checked' : ''}> ${escapeHTML(f.label)}</label></li>`;
+  }).join('')}</ul>` : '';
+  return `<div class="role-notes-row">
+    <div class="role-notes-head">
+      <span class="role-system-label">Notes</span>
+      <select class="role-system-level-select" data-role-notes-level aria-label="Notes level">
+        <option value="none" ${notes.level === 'none' ? 'selected' : ''}>None</option>
+        <option value="all" ${notes.level === 'all' ? 'selected' : ''}>All notes</option>
+        <option value="some" ${notes.level === 'some' ? 'selected' : ''}>Some folders</option>
+      </select>
+    </div>
+    ${folderList}
+  </div>`;
+}
+
+function roleMembersBlock(role) {
+  const held = new Set((role.members || []).map(m => m.person_id));
+  const addable = (state.people || []).filter(p => !held.has(p.id));
+  return `<div class="role-members">
+    <ul class="role-member-list">${(role.members || []).length ? role.members.map(m => `<li class="role-member-row"><span class="role-member-name">${escapeHTML(m.name || m.person_id)}</span>${role.locked ? '' : `<button type="button" class="role-member-remove" data-remove-role-member="${escapeHTML(m.person_id)}">Remove</button>`}</li>`).join('') : '<li class="muted">No members</li>'}</ul>
+    ${role.locked ? '' : `<div class="role-add-member"><select data-add-role-member aria-label="Add person to ${escapeHTML(role.name)}"><option value="">Add person&hellip;</option>${addable.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(personName(p))}</option>`).join('')}</select></div>`}
+  </div>`;
+}
+
+function renderRoleRow(role) {
+  const isOpen = state.roleOpen.has(role.name);
+  const affects = state.roleAffectsText.get(role.name);
+  const titleHTML = role.locked
+    ? `<span class="role-name-input" aria-label="Role name">${escapeHTML(role.name)}</span><span class="role-row-locked-badge">Built in</span>`
+    : `<input class="role-name-input" data-role-name-input data-original-name="${escapeHTML(role.name)}" value="${escapeHTML(role.name)}" aria-label="Role name">`;
+  const memberWord = role.member_count === 1 ? 'person' : 'people';
+  return `<div class="role-row" data-role-name="${escapeHTML(role.name)}">
+    <div class="role-row-head">
+      <div class="role-row-title">${titleHTML}</div>
+      <button type="button" class="role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${role.member_count} ${memberWord}${isOpen ? ' &middot; hide' : ''}</button>
+    </div>
+    <p class="role-row-can-text">${escapeHTML(role.can_text || '')}</p>
+    ${isOpen ? `<div class="role-row-body">
+      ${roleMembersBlock(role)}
+      ${role.locked ? '' : `<div class="role-systems">${(role.systems || []).map(roleSystemControl).join('')}</div>`}
+      ${role.locked ? '' : roleNotesRow(role)}
+    </div>` : ''}
+    ${affects ? `<p class="role-affects-text${affects.fading ? ' is-fading' : ''}">${escapeHTML(affects.text)}</p>` : ''}
+  </div>`;
+}
+
+function renderWhoCanResults() {
+  const host = $('#who-can-results');
+  if (!host) return;
+  const term = $('#who-can-search')?.value.trim() || '';
+  if (!term) { host.hidden = true; host.innerHTML = ''; return; }
+  host.hidden = false;
+  const matches = state.whoCanMatches || [];
+  host.innerHTML = matches.length
+    ? matches.map(m => `<div class="who-can-match"><div class="who-can-phrase">${escapeHTML(m.phrase)}</div>${(m.roles || []).map(r => `<div class="who-can-role-line"><strong>${escapeHTML(r.name)}</strong>: ${(r.members || []).length ? r.members.map(mm => escapeHTML(mm.name)).join(', ') : 'no members'}</div>`).join('')}</div>`).join('')
+    : '<p class="who-can-empty">No matches.</p>';
+}
+
+let whoCanDebounceTimer;
+function bindWhoCanSearch() {
+  const input = $('#who-can-search');
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = '1';
+  input.addEventListener('input', () => {
+    clearTimeout(whoCanDebounceTimer);
+    const q = input.value.trim();
+    if (!q) { state.whoCanMatches = []; renderWhoCanResults(); return; }
+    whoCanDebounceTimer = setTimeout(async () => {
+      try {
+        const result = await api(`/roles/who_can?q=${encodeURIComponent(q)}`);
+        if (input.value.trim() !== q) return; // stale response, typed on
+        state.whoCanMatches = result.matches || [];
+        renderWhoCanResults();
+      } catch (error) { showNotice(`Search failed: ${error.message}`, 'error'); }
+    }, 250);
+  });
 }
 
 function renderRolesPage() {
-  $('#roles-count').textContent = `${state.roles.length} configured`;
+  const summary = state.rolesSummary;
+  const host = $('#roles-list');
+  host.setAttribute('aria-busy', 'false');
+  if (!summary) { host.innerHTML = '<div class="empty-state">Roles not loaded.</div>'; return; }
   // The locked (built-in) role, if present, is shown first -- it is a fixed
   // fact about the system, not something this list can rearrange or edit.
-  const ordered = [...state.roles].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
-  $('#roles-list').innerHTML = ordered.length ? ordered.map(role => role.locked ? `<div class="role-card role-card-locked" data-role-name="${escapeHTML(role.name)}">
-    <div class="role-card-head">
-      <div><span class="role-name">${escapeHTML(role.name)}</span><div class="muted">${escapeHTML(role.note || 'No note')}</div></div>
-      <div class="role-card-actions"><span class="role-locked-badge">Built in</span></div>
-    </div>
-    <p class="role-locked-description">${escapeHTML(role.description || 'Everything, on verified channels only.')}</p>
-    <div class="role-members">
-      <h4>Members (${role.members.length})</h4>
-      <ul class="member-list">${role.members.length ? role.members.map(m => `<li><span class="person-name">${escapeHTML(m.person)}</span><span class="person-key">${escapeHTML(m.key)}</span></li>`).join('') : '<li class="muted">No members</li>'}</ul>
-    </div>
-  </div>` : `<div class="role-card" data-role-name="${escapeHTML(role.name)}">
-    <div class="role-card-head">
-      <div><span class="role-name">${escapeHTML(role.name)}</span><div class="muted">${escapeHTML(role.note || 'No note')}</div></div>
-      <div class="role-card-actions">
-        <button class="button button-quiet" type="button" data-edit-role>Edit</button>
-        <button class="button button-danger" type="button" data-delete-role>Delete</button>
-      </div>
-    </div>
-    ${role.warning ? `<p class="role-warning">${escapeHTML(role.warning)}</p>` : ''}
-    <div class="role-scope-columns">
-      <div><h4>Read</h4>${scopeList(role.read_scopes)}</div>
-      <div><h4>Write${(role.write_scopes || []).length ? '<span class="write-mark">includes write access</span>' : ''}</h4>${scopeList(role.write_scopes)}</div>
-    </div>
-    <div class="role-members">
-      <h4>Members (${role.members.length})</h4>
-      <ul class="member-list">${role.members.length ? role.members.map(m => `<li><span class="person-name">${escapeHTML(m.person)}</span><span class="person-key">${escapeHTML(m.key)}</span><button class="button button-quiet" type="button" data-remove-member="${escapeHTML(m.key)}">Remove</button></li>`).join('') : '<li class="muted">No members</li>'}</ul>
-      <form class="add-member-form" data-add-member autocomplete="off">
-        <input name="key" class="mono" placeholder="Search people, or type a handle" data-member-input required>
-        <div class="add-member-suggestions" data-member-suggestions></div>
-        <button class="button button-quiet" type="submit">Add member</button>
-      </form>
-    </div>
-  </div>`).join('') : '<div class="empty-state">No roles configured. People default to no permissions.</div>';
+  const ordered = [...(summary.roles || [])].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
+  host.innerHTML = ordered.length ? ordered.map(renderRoleRow).join('') : '<div class="empty-state">No roles configured. People default to no permissions.</div>';
+  const sources = summary.sources || [];
+  const sourcesLine = $('#roles-sources');
+  if (sourcesLine) sourcesLine.textContent = sources.length ? sources.map(s => `${s.label}: ${s.detail}`).join(' · ') : '';
+  bindWhoCanSearch();
+  renderWhoCanResults();
 }
 
-function openRoleEditor(role = { name: '', note: '', scopes: [], __new: true }) {
-  const host = role.__new ? document.createElement('div') : $(`[data-role-name="${CSS.escape(role.name)}"]`);
-  if (role.__new) { host.className = 'role-card'; $('#roles-list').prepend(host); }
-  const selected = new Set(role.scopes || []);
-  host.innerHTML = `<form class="role-editor" data-original-name="${escapeHTML(role.__new ? '' : role.name)}">
-    <div class="editor-grid">
-      <label class="field">Role name<input name="name" required value="${escapeHTML(role.name)}" ></label>
-      <label class="field">Note<textarea name="note" placeholder="Who this role is for">${escapeHTML(role.note || '')}</textarea></label>
-    </div>
-    <div class="scope-groups">${renderScopeGroups(selected)}</div>
-    <div class="editor-actions">
-      ${role.__new ? '<span></span>' : '<button class="button button-danger" type="button" data-delete-role>Delete role</button>'}
-      <div class="save-actions"><button class="button button-quiet" type="button" data-cancel-role>Cancel</button><button class="button button-primary" type="submit">Save role</button></div>
-    </div>
-  </form>`;
-  $('input', host)?.focus();
+function showRoleAffects(name, text) {
+  if (!text) return;
+  if (!state.roleAffectsTimers) state.roleAffectsTimers = new Map();
+  clearTimeout(state.roleAffectsTimers.get(name));
+  state.roleAffectsText.set(name, { text, fading: false });
+  renderRolesPage();
+  state.roleAffectsTimers.set(name, setTimeout(() => {
+    const cur = state.roleAffectsText.get(name);
+    if (cur) { cur.fading = true; renderRolesPage(); }
+    state.roleAffectsTimers.set(name, setTimeout(() => { state.roleAffectsText.delete(name); renderRolesPage(); }, 700));
+  }, 3000));
 }
 
-async function saveRole(form) {
-  const data = new FormData(form);
-  const body = { name: data.get('name').trim(), scopes: data.getAll('scopes'), note: data.get('note').trim() };
-  if (!body.name) return showNotice('A role name is required.', 'error');
-  setFormBusy(form, true);
+async function renameRole(oldName, newName) {
+  newName = (newName || '').trim();
+  if (!newName || newName === oldName) { renderRolesPage(); return; }
   try {
-    const original = form.dataset.originalName;
-    if (original && original !== body.name) await post('/roles/rename', { name: original, new_name: body.name });
-    await post('/roles', body);
+    await post('/roles/rename', { name: oldName, new_name: newName });
+    if (state.roleOpen.has(oldName)) { state.roleOpen.delete(oldName); state.roleOpen.add(newName); }
     await refreshRoles();
-    showNotice(`Saved ${body.name}. Everyone with this role is now updated.`);
-  } catch (error) { showNotice(`Role not saved: ${error.message}`, 'error'); setFormBusy(form, false); }
+    showNotice(`Renamed to ${newName}.`);
+  } catch (error) { showNotice(`Could not rename: ${error.message}`, 'error'); await refreshRoles(); }
 }
 
-async function deleteRole(name) {
-  const role = state.roles.find(item => item.name === name);
-  const impact = role?.people_count ? ` ${role.people_count} ${role.people_count === 1 ? 'person' : 'people'} will lose its inherited scopes.` : '';
-  if (!window.confirm(`Delete role ${name}?${impact}`)) return;
+async function setRoleLevel(name, system, level) {
   try {
-    await post('/roles/delete', { name });
+    const result = await post('/roles/set_level', { role: name, system, level });
+    state.roleOpen.add(name);
     await refreshRoles();
-    showNotice(`Deleted role ${name}.`);
-  } catch (error) { showNotice(`Role not deleted: ${error.message}`, 'error'); }
+    showRoleAffects(name, result.affects_text);
+  } catch (error) { showNotice(`Could not change ${name}: ${error.message}`, 'error'); await refreshRoles(); }
 }
 
-async function addRoleMember(name, key) {
+async function setRoleSend(name, system, on) {
   try {
-    await post('/roles/members/add', { name, key });
+    const result = await post('/roles/set_send', { role: name, system, on });
+    state.roleOpen.add(name);
     await refreshRoles();
-    showNotice(`Added ${key} to ${name}.`);
-  } catch (error) { showNotice(`Could not add member: ${error.message}`, 'error'); }
+    showRoleAffects(name, result.affects_text);
+  } catch (error) { showNotice(`Could not change ${name}: ${error.message}`, 'error'); await refreshRoles(); }
 }
 
-async function removeRoleMember(name, key) {
-  if (!window.confirm(`Remove ${key} from ${name}?`)) return;
+async function setRoleNotesLevel(name, level) {
+  const role = (state.rolesSummary?.roles || []).find(r => r.name === name);
+  const folders = ((role?.notes || {}).folders || []).filter(f => f.on).map(f => f.scope);
   try {
-    await post('/roles/members/remove', { name, key });
+    const result = await post('/roles/set_notes', { role: name, level, folders });
+    state.roleOpen.add(name);
     await refreshRoles();
-    showNotice(`Removed ${key} from ${name}.`);
-  } catch (error) { showNotice(`Could not remove member: ${error.message}`, 'error'); }
+    showRoleAffects(name, result.affects_text);
+  } catch (error) { showNotice(`Could not change ${name}: ${error.message}`, 'error'); await refreshRoles(); }
+}
+
+async function setRoleNotesFolders(name) {
+  const row = $(`[data-role-name="${CSS.escape(name)}"]`);
+  const folders = row ? $$('[data-role-note-folder]', row).filter(cb => cb.checked).map(cb => cb.dataset.scope) : [];
+  try {
+    const result = await post('/roles/set_notes', { role: name, level: 'some', folders });
+    state.roleOpen.add(name);
+    await refreshRoles();
+    showRoleAffects(name, result.affects_text);
+  } catch (error) { showNotice(`Could not change ${name}: ${error.message}`, 'error'); await refreshRoles(); }
+}
+
+async function addRoleMemberByPerson(name, personId) {
+  if (!personId) return;
+  const p = state.people.find(pp => pp.id === personId);
+  if (!p) return;
+  try {
+    await setPersonRole(personId, name, true);
+    state.roleOpen.add(name);
+    await refreshRoles();
+    showNotice(`Added ${personName(p)} to ${name}.`);
+  } catch { /* setPersonRole already reported the error */ }
+}
+
+async function removeRoleMemberByPerson(name, personId) {
+  try {
+    await setPersonRole(personId, name, false);
+    state.roleOpen.add(name);
+    await refreshRoles();
+  } catch { /* setPersonRole already reported the error */ }
 }
 
 function setFormBusy(form, busy) {
@@ -1437,14 +1531,16 @@ document.addEventListener('click', event => {
   }
   const personButton = event.target.closest('[data-person-key]');
   if (personButton) { state.selectedPerson = personButton.dataset.personKey; state.personDirty = false; renderPeople(); renderPersonEditor(); }
-  const editRole = event.target.closest('[data-edit-role]');
-  if (editRole) openRoleEditor(state.roles.find(role => role.name === editRole.closest('[data-role-name]').dataset.roleName));
-  const cancelRole = event.target.closest('[data-cancel-role]');
-  if (cancelRole) renderRolesPage();
-  const deleteRoleButton = event.target.closest('[data-delete-role]');
-  if (deleteRoleButton) deleteRole(deleteRoleButton.closest('[data-role-name]').dataset.roleName);
-  const removeMemberButton = event.target.closest('[data-remove-member]');
-  if (removeMemberButton) removeRoleMember(removeMemberButton.closest('[data-role-name]').dataset.roleName, removeMemberButton.dataset.removeMember);
+  const toggleRole = event.target.closest('[data-toggle-role]');
+  if (toggleRole) {
+    const name = toggleRole.closest('[data-role-name]').dataset.roleName;
+    if (state.roleOpen.has(name)) state.roleOpen.delete(name); else state.roleOpen.add(name);
+    renderRolesPage();
+  }
+  const removeRoleMemberButton = event.target.closest('[data-remove-role-member]');
+  if (removeRoleMemberButton) removeRoleMemberByPerson(removeRoleMemberButton.closest('[data-role-name]').dataset.roleName, removeRoleMemberButton.dataset.removeRoleMember);
+  const removePersonRoleButton = event.target.closest('[data-remove-person-role]');
+  if (removePersonRoleButton) setPersonRole(state.selectedPerson, removePersonRoleButton.dataset.removePersonRole, false);
   const taskButton = event.target.closest('[data-task-id]');
   if (taskButton) navigate(`/console/tasks/${encodeURIComponent(taskButton.dataset.taskId)}`);
   const scheduleActionButton = event.target.closest('[data-schedule-action]');
@@ -1486,51 +1582,59 @@ document.addEventListener('click', event => {
   }
 });
 
-async function peopleForSearch() {
-  try { return (await api('/people')).people || []; }
-  catch { return []; }
-}
-
-document.addEventListener('input', event => {
-  if (!event.target.matches('[data-member-input]')) return;
-  const input = event.target;
-  const box = input.closest('.add-member-form').querySelector('[data-member-suggestions]');
-  const term = input.value.trim().toLowerCase();
-  if (!term) { box.innerHTML = ''; return; }
-  peopleForSearch().then(people => {
-    if (input.value.trim().toLowerCase() !== term) return; // stale response, typed on
-    const matches = people
-      .filter(person => String(person.person || '').toLowerCase().includes(term) || String(person.key || '').toLowerCase().includes(term))
-      .slice(0, 8);
-    box.innerHTML = matches.map(person => `<button type="button" class="add-member-suggestion" data-member-pick="${escapeHTML(person.key)}">${escapeHTML(person.person || person.key)}<span class="person-key">${escapeHTML(person.key)}</span></button>`).join('');
-  });
-});
-
-document.addEventListener('click', event => {
-  const pick = event.target.closest('[data-member-pick]');
-  if (!pick) return;
-  const form = pick.closest('.add-member-form');
-  const input = form.querySelector('[data-member-input]');
-  input.value = pick.dataset.memberPick;
-  form.querySelector('[data-member-suggestions]').innerHTML = '';
-  input.focus();
-});
-
-document.addEventListener('focusout', event => {
-  if (!event.target.matches('[data-member-input]')) return;
-  const box = event.target.closest('.add-member-form').querySelector('[data-member-suggestions]');
-  setTimeout(() => { box.innerHTML = ''; }, 150);
-});
-
 document.addEventListener('submit', event => {
   event.preventDefault();
   if (event.target.id === 'person-form') savePerson(event.target);
-  if (event.target.matches('.role-editor')) saveRole(event.target);
   if (event.target.id === 'schedule-form') saveSchedule(event.target);
-  if (event.target.matches('[data-add-member]')) {
-    const name = event.target.closest('[data-role-name]')?.dataset.roleName;
-    const key = new FormData(event.target).get('key')?.trim();
-    if (name && key) { addRoleMember(name, key); event.target.reset(); }
+});
+
+document.addEventListener('focusout', event => {
+  if (event.target.matches('[data-role-name-input]')) {
+    renameRole(event.target.dataset.originalName, event.target.value);
+  }
+});
+
+document.addEventListener('keydown', event => {
+  if (event.target.matches('[data-role-name-input]') && event.key === 'Enter') {
+    event.preventDefault();
+    event.target.blur();
+  }
+});
+
+document.addEventListener('change', event => {
+  const levelSelect = event.target.closest('[data-role-level]');
+  if (levelSelect) {
+    setRoleLevel(levelSelect.closest('[data-role-name]').dataset.roleName, levelSelect.dataset.system, levelSelect.value);
+    return;
+  }
+  const sendToggle = event.target.closest('[data-role-send]');
+  if (sendToggle) {
+    setRoleSend(sendToggle.closest('[data-role-name]').dataset.roleName, sendToggle.dataset.system, sendToggle.checked);
+    return;
+  }
+  const notesLevel = event.target.closest('[data-role-notes-level]');
+  if (notesLevel) {
+    setRoleNotesLevel(notesLevel.closest('[data-role-name]').dataset.roleName, notesLevel.value);
+    return;
+  }
+  const notesFolder = event.target.closest('[data-role-note-folder]');
+  if (notesFolder) {
+    setRoleNotesFolders(notesFolder.closest('[data-role-name]').dataset.roleName);
+    return;
+  }
+  const addMemberSelect = event.target.closest('[data-add-role-member]');
+  if (addMemberSelect) {
+    const name = addMemberSelect.closest('[data-role-name]').dataset.roleName;
+    const personId = addMemberSelect.value;
+    addMemberSelect.value = '';
+    addRoleMemberByPerson(name, personId);
+    return;
+  }
+  const addPersonRole = event.target.closest('[data-add-person-role]');
+  if (addPersonRole) {
+    const roleName = addPersonRole.value;
+    addPersonRole.value = '';
+    if (roleName && state.selectedPerson) setPersonRole(state.selectedPerson, roleName, true);
   }
 });
 
@@ -1632,7 +1736,6 @@ document.addEventListener('click',async event => {
 });
 
 $('#sync-people')?.addEventListener('click', syncPeopleFromInkbox);
-$('#add-role')?.addEventListener('click', () => openRoleEditor());
 $('#add-schedule')?.addEventListener('click', () => openScheduleEditor());
 // A plain toggle button rather than <details>/<summary>: re-rendering an already-open
 // <details> on every unrelated card update risks re-firing its own native toggle
