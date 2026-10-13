@@ -229,7 +229,7 @@ function relativeAge(value) {
 
 async function refreshHome({ throwOnError = false } = {}) {
   try {
-    state.home = await api('/home');
+    state.overview = await api('/overview');
     state.loaded.home = true;
     state.invalidated.home = false;
     renderHome();
@@ -239,104 +239,112 @@ async function refreshHome({ throwOnError = false } = {}) {
   }
 }
 
-function homeNeedsYouBlock() {
-  const needs = state.home?.needs_you || { count: 0, oldest: null };
-  const quiet = !needs.count;
-  const oldest = needs.oldest;
-  return `<article class="home-card home-needs-you${quiet ? ' is-quiet' : ' is-urgent'}" aria-labelledby="home-needs-you-title">
+// Every sentence, label and action in these four blocks comes straight from the
+// overview API; nothing here encodes wording of its own beyond the section
+// headings and the empty-state lines, which are chrome, not data.
+const HOME_OUTCOME_STATE = { finished: 'done', could_not_finish: 'pending', failed: 'failed' };
+const HOME_OUTCOME_WORD = { finished: 'Finished', could_not_finish: 'Could not finish', failed: 'Failed' };
+
+function homeActionButtons(actions) {
+  return (actions || [])
+    .map(a => `<button type="button" class="button button-quiet" data-home-action="${escapeHTML(JSON.stringify(a))}">${escapeHTML(a.label)}</button>`)
+    .join('');
+}
+
+function homeStuckBlock() {
+  const rows = state.overview?.stuck || [];
+  const quiet = !rows.length;
+  return `<article class="home-card home-stuck${quiet ? ' is-quiet' : ' is-urgent'}" aria-labelledby="home-stuck-title">
     <div class="home-card-head">
-      <h2 id="home-needs-you-title">Needs you</h2>
-      <span class="home-needs-count">${needs.count}</span>
+      <h2 id="home-stuck-title">Stuck</h2>
+      <span class="home-needs-count">${rows.length}</span>
     </div>
     ${quiet
-      ? '<p class="home-card-body muted">Nothing is waiting on you.</p>'
-      : `<p class="home-card-body">${needs.count === 1 ? 'One request is' : `${needs.count} requests are`} waiting on you. The oldest, from <strong>${escapeHTML(oldest.sender || 'Unknown sender')}</strong> (${escapeHTML(relativeAge(oldest.created_at))}):</p>
-         <blockquote class="home-oldest-summary">${escapeHTML(oldest.summary || 'No summary')}</blockquote>
-         <a class="button button-primary" href="${VIEW_PATHS.requests}" data-home-link="requests">Open requests</a>`}
+      ? '<p class="home-card-body muted">Nothing is stuck.</p>'
+      : `<ul class="home-mini-list">${rows.map(row => `<li class="home-row">
+          <div class="home-row-body">
+            <p class="home-card-body">${escapeHTML(row.sentence)}</p>
+            ${row.since_text ? `<span class="muted">${escapeHTML(row.since_text)}</span>` : ''}
+          </div>
+          <div class="home-row-actions">${homeActionButtons(row.actions)}</div>
+        </li>`).join('')}</ul>`}
   </article>`;
 }
 
-function homeRightNowBlock() {
-  const rightNow = state.home?.right_now || { running_count: 0, running: [], gateway_up: false, tunnel_connected: false };
-  const streamLive = state.streamState === 'live';
-  return `<article class="home-card home-right-now" aria-labelledby="home-right-now-title">
-    <div class="home-card-head"><h2 id="home-right-now-title">Right now</h2></div>
-    <dl class="home-status-grid">
-      <div><dt>Gateway</dt><dd class="state state-${rightNow.gateway_up ? 'done' : 'failed'}">${rightNow.gateway_up ? 'up' : 'down'}</dd></div>
-      <div><dt>Tunnel</dt><dd class="state state-${rightNow.tunnel_connected ? 'done' : 'failed'}">${rightNow.tunnel_connected ? 'connected' : 'disconnected'}</dd></div>
-      <div><dt>Live updates</dt><dd class="state state-${streamLive ? 'done' : 'failed'}">${streamLive ? 'connected' : 'offline'}</dd></div>
-      <div><dt>Running now</dt><dd class="home-running-count">${rightNow.running_count}</dd></div>
-    </dl>
-    ${rightNow.running.length
-      ? `<ul class="home-mini-list">${rightNow.running.map(r => `<li><span class="state state-running">running</span><span class="home-mini-summary">${escapeHTML(r.summary || 'No summary')}</span><span class="muted">${escapeHTML(relativeAge(r.created_at))}</span></li>`).join('')}</ul>`
-      : '<p class="home-card-body muted">Nothing is running right now.</p>'}
-    <a class="home-card-link" href="${VIEW_PATHS.requests}" data-home-link="requests">See requests →</a>
+function homeRunningBlock() {
+  const rows = state.overview?.running || [];
+  return `<article class="home-card home-running" aria-labelledby="home-running-title">
+    <div class="home-card-head"><h2 id="home-running-title">Running</h2></div>
+    ${rows.length
+      ? `<ul class="home-mini-list">${rows.map(row => `<li>
+          <span class="state state-running">running</span>
+          <span class="home-mini-summary">${escapeHTML(row.sentence)}${row.latest_step ? ` &middot; ${escapeHTML(row.latest_step)}` : ''}</span>
+          <span class="muted">${escapeHTML(row.started_text || '')}</span>
+        </li>`).join('')}</ul>`
+      : '<p class="home-card-body muted">Nothing is running.</p>'}
   </article>`;
 }
 
-function homeRecentActivityBlock() {
-  const recent = state.home?.recent_activity || [];
-  return `<article class="home-card home-recent-activity" aria-labelledby="home-recent-title">
-    <div class="home-card-head"><h2 id="home-recent-title">Recent activity</h2></div>
-    ${recent.length
-      ? `<ul class="home-mini-list">${recent.map(r => `<li><span class="state state-${escapeHTML(r.state)}">${escapeHTML(r.state)}</span><span class="home-mini-summary"><strong>${escapeHTML(r.sender || 'Unknown sender')}</strong> &middot; ${escapeHTML(r.summary || 'No summary')}</span><span class="muted">${escapeHTML(relativeAge(r.created_at))}</span></li>`).join('')}</ul>`
-      : '<p class="home-card-body muted">No requests yet.</p>'}
-    <a class="home-card-link" href="${VIEW_PATHS.requests}" data-home-link="requests">See all requests →</a>
+function homeDoneTodayBlock() {
+  const rows = state.overview?.done_today || [];
+  return `<article class="home-card home-done-today" aria-labelledby="home-done-title">
+    <div class="home-card-head"><h2 id="home-done-title">Done today</h2></div>
+    ${rows.length
+      ? `<ul class="home-mini-list">${rows.map(row => `<li>
+          <span class="state state-${HOME_OUTCOME_STATE[row.outcome] || 'neutral'}">${escapeHTML(HOME_OUTCOME_WORD[row.outcome] || row.outcome)}</span>
+          <span class="home-mini-summary">${escapeHTML(row.sentence)}</span>
+          <span class="muted">${escapeHTML(row.time_text || '')}</span>
+        </li>`).join('')}</ul>`
+      : '<p class="home-card-body muted">Nothing finished today yet.</p>'}
   </article>`;
 }
 
 function homeComingUpBlock() {
-  const comingUp = state.home?.coming_up || { schedules_paused: false, next: [] };
+  const rows = state.overview?.coming_up || [];
   return `<article class="home-card home-coming-up" aria-labelledby="home-coming-up-title">
-    <div class="home-card-head">
-      <h2 id="home-coming-up-title">Coming up</h2>
-      ${comingUp.schedules_paused ? '<span class="home-pill is-waiting">Schedules paused</span>' : ''}
-    </div>
-    ${comingUp.next.length
-      ? `<ul class="home-mini-list">${comingUp.next.map(s => `<li><span class="home-mini-summary"><strong>${escapeHTML(s.title)}</strong> &middot; ${escapeHTML(s.cadence)}</span><span class="muted">${escapeHTML(formatTime(s.next_run))}</span></li>`).join('')}</ul>`
+    <div class="home-card-head"><h2 id="home-coming-up-title">Coming up</h2></div>
+    ${rows.length
+      ? `<ul class="home-mini-list">${rows.map(s => `<li><span class="home-mini-summary"><strong>${escapeHTML(s.title)}</strong> &middot; ${escapeHTML(s.cadence_text)}</span><span class="muted">${escapeHTML(s.next_run_text || '')}</span></li>`).join('')}</ul>`
       : '<p class="home-card-body muted">No scheduled runs are coming up.</p>'}
     <a class="home-card-link" href="${VIEW_PATHS.schedules}" data-home-link="schedules">See schedules →</a>
   </article>`;
 }
 
-function homePeopleBlock() {
-  const people = state.home?.people || { total: 0, with_role: 0, roles: [], last_sync: {} };
-  const lastSync = people.last_sync || {};
-  const failed = lastSync.failed || [];
-  return `<article class="home-card home-people" aria-labelledby="home-people-title">
-    <div class="home-card-head">
-      <h2 id="home-people-title">People &amp; roles</h2>
-      <button id="home-sync-people" class="button button-quiet" type="button">Refresh from Inkbox</button>
-    </div>
-    <dl class="home-status-grid">
-      <div><dt>People known</dt><dd>${people.total}</dd></div>
-      <div><dt>Hold a role</dt><dd>${people.with_role}</dd></div>
-    </dl>
-    ${people.roles.length
-      ? `<ul class="home-mini-list">${people.roles.map(r => `<li><span class="home-mini-summary mono">${escapeHTML(r.name)}</span><span class="muted">${r.members} member${r.members === 1 ? '' : 's'}</span></li>`).join('')}</ul>`
-      : '<p class="home-card-body muted">No roles configured.</p>'}
-    <p class="home-card-body muted">${lastSync.at ? `Last synced ${escapeHTML(relativeAge(lastSync.at))}` : 'Never synced from Inkbox.'}${failed.length ? ` — failed: ${escapeHTML(failed.join(', '))}` : ''}</p>
-    <a class="home-card-link" href="${VIEW_PATHS.people}" data-home-link="people">See people →</a>
-  </article>`;
+function homeSourcesLine() {
+  const sources = state.overview?.sources || [];
+  if (!sources.length) return '';
+  return `<p class="home-sources">${sources.map(s => `${escapeHTML(s.label)}: ${escapeHTML(s.detail)}`).join(' &middot; ')}</p>`;
 }
 
-function homeContactsBlock() {
-  const contacts = state.home?.recent_contacts || [];
-  return `<article class="home-card home-contacts" aria-labelledby="home-contacts-title">
-    <div class="home-card-head"><h2 id="home-contacts-title">Who reached out recently</h2></div>
-    ${contacts.length
-      ? `<ul class="home-mini-list">${contacts.map(c => `<li><span class="home-mini-summary">${escapeHTML(c.person || c.key)}</span><span class="muted">${escapeHTML((c.channels || []).join(', ') || 'unknown channel')} &middot; ${escapeHTML(relativeAge(c.last_seen))}</span></li>`).join('')}</ul>`
-      : '<p class="home-card-body muted">No one has reached out yet.</p>'}
-    <a class="home-card-link" href="${VIEW_PATHS.people}" data-home-link="people">See people →</a>
-  </article>`;
+async function homeAction(action) {
+  const target = action?.target || {};
+  try {
+    if (target.endpoint === 'requests/decide') {
+      await post('/requests/decide', { id: target.id, decision: target.decision });
+    } else if (target.endpoint === 'schedules/approve') {
+      await post('/schedules/approve', { id: target.id, approve: target.approve });
+    } else if (target.endpoint === 'schedules/action') {
+      await post('/schedules/action', { id: target.id, action: target.action });
+    } else if (target.endpoint === 'schedules/edit') {
+      await post('/schedules/edit', { id: target.id, scopes: target.scopes });
+    } else if (target.endpoint === 'schedules') {
+      navigate(VIEW_PATHS.schedules);
+      return;
+    } else {
+      return;
+    }
+    showNotice('Done.');
+    await refreshHome({ throwOnError: false });
+  } catch (error) {
+    showNotice(`Could not do that: ${error.message}`, 'error');
+  }
 }
 
 function renderHome() {
   const host = $('#home-content');
   host.setAttribute('aria-busy', 'false');
-  if (!state.home) { host.innerHTML = '<div class="empty-state">Data is not available yet.</div>'; return; }
-  host.innerHTML = homeNeedsYouBlock() + homeRightNowBlock() + homeRecentActivityBlock()
-    + homeComingUpBlock() + homePeopleBlock() + homeContactsBlock();
+  if (!state.overview) { host.innerHTML = '<div class="empty-state">Data is not available yet.</div>'; return; }
+  host.innerHTML = homeStuckBlock() + homeRunningBlock() + homeDoneTodayBlock() + homeComingUpBlock() + homeSourcesLine();
 }
 
 function renderRequests() {
@@ -1364,7 +1372,7 @@ function setStreamState(streamState) {
   const dot = $('#stream-dot');
   dot.className = `stream-dot${streamState === 'live' ? ' is-live' : streamState === 'connecting' ? ' is-connecting' : ''}`;
   $('#stream-label').textContent = streamState;
-  if (state.activeView === 'home' && state.home) renderHome();
+  if (state.activeView === 'home' && state.overview) renderHome();
 }
 
 function applyRoute({ replaceUnknown = false } = {}) {
@@ -1466,7 +1474,11 @@ document.addEventListener('click', event => {
   const closeButton = event.target.closest('[data-close-dialog]');
   if (closeButton) $(`#${closeButton.dataset.closeDialog}`).close();
   if (event.target.closest('[data-open-shortcuts]')) $('#shortcuts-dialog').showModal();
-  if (event.target.closest('#home-sync-people')) syncPeopleFromInkbox();
+  const homeActionButton = event.target.closest('[data-home-action]');
+  if (homeActionButton) {
+    homeActionButton.disabled = true;
+    homeAction(JSON.parse(homeActionButton.dataset.homeAction)).finally(() => { homeActionButton.disabled = false; });
+  }
   const resetSetting = event.target.closest('[data-reset-setting]');
   if (resetSetting) {
     const setting = state.settings.find(item => item.name === resetSetting.closest('[data-setting-name]').dataset.settingName);

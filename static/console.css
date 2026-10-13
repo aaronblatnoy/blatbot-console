@@ -116,7 +116,7 @@ a { color: inherit; }
 }
 .skip-link { position: fixed; left: 1rem; top: -4rem; z-index: 50; background: var(--text); color: var(--ink); padding: .6rem 1rem; }
 .skip-link:focus { top: 1rem; }
-.mono, code, time, kbd, .scope-name, .person-key, .request-id { font-family: var(--mono); }
+.mono, code, time, kbd, .scope-name, .person-key, .request-id { font-family: var(--sans); }
 .muted { color: var(--muted); }
 
 .topbar {
@@ -129,7 +129,7 @@ a { color: inherit; }
 .brand-mark { width: 22px; height: 22px; flex: none; }
 .brand-mark .trace { fill: none; stroke: var(--accent); stroke-width: 1.4; }
 .brand-mark .node { fill: var(--accent-bright); }
-.wordmark { font-family: var(--mono); font-weight: 800; font-size: 16px; letter-spacing: .02em; color: var(--text); }
+.wordmark { font-family: var(--sans); font-weight: 800; font-size: 16px; letter-spacing: .02em; color: var(--text); }
 .environment { color: var(--faint); font-size: 12px; }
 /* The five pages are tabs, drawn the way a terminal draws them: a strip of chrome,
    each tab fenced by a rule, the one you are on simply brighter and bluer than the rest. */
@@ -142,11 +142,11 @@ nav a {
 }
 nav a:hover { color: var(--text); background: #0d1430; }
 nav a[aria-current="page"] { color: var(--text); background: var(--panel-raised); font-weight: 700; box-shadow: inset 0 -2px 0 var(--accent-bright), 0 0 10px rgba(91, 184, 255, .25); }
-.nav-count { min-width: 17px; padding: 0 4px; color: #1b1402; background: var(--waiting); border-radius: 0; font: 700 11px/17px var(--mono); text-align: center; }
+.nav-count { min-width: 17px; padding: 0 4px; color: #1b1402; background: var(--waiting); border-radius: 0; font: 700 11px/17px var(--sans); text-align: center; }
 .mobile-nav { display: none; }
-.mobile-request-status { align-items: center; gap: 4px; color: var(--muted); font: 11px var(--mono); }
+.mobile-request-status { align-items: center; gap: 4px; color: var(--muted); font: 11px var(--sans); }
 .mobile-request-status:not([hidden]) { display: flex; }
-.connection { justify-self: end; display: flex; align-items: center; gap: 7px; color: var(--muted); font: 12px var(--mono); }
+.connection { justify-self: end; display: flex; align-items: center; gap: 7px; color: var(--muted); font: 12px var(--sans); }
 .stream-dot { width: 9px; height: 9px; background: var(--failed); }
 .stream-dot.is-live { background: var(--done); box-shadow: 0 0 0 3px rgba(53, 212, 131, .22); }
 .stream-dot.is-connecting { background: var(--muted); }
@@ -202,7 +202,7 @@ h3 { margin-bottom: 6px; font-size: 13px; font-weight: 700; }
 
 .waiting-section { padding-top: 26px; }
 .waiting-heading { align-items: center; }
-.big-count { color: var(--waiting); font: 800 40px/1 var(--mono); }
+.big-count { color: var(--waiting); font: 800 40px/1 var(--sans); }
 .big-count.is-zero { color: var(--faint); text-shadow: none; }
 .waiting-list { display: grid; gap: 10px; }
 .waiting-empty { padding: 20px 0 28px; color: var(--muted); }
@@ -215,7 +215,7 @@ h3 { margin-bottom: 6px; font-size: 13px; font-weight: 700; }
 .surface, .request-id { color: var(--muted); font-size: 12px; }
 .request-summary { margin: 0 0 8px; font-size: 13px; }
 .scope-line { display: flex; flex-wrap: wrap; gap: 6px; }
-.scope-chip { display: inline-block; padding: 2px 8px; color: var(--accent-bright); background: var(--accent-dim); border: 1px solid var(--rule-strong); font: 700 11px/1.5 var(--mono); }
+.scope-chip { display: inline-block; padding: 2px 8px; color: var(--accent-bright); background: var(--accent-dim); border: 1px solid var(--rule-strong); font: 700 11px/1.5 var(--sans); }
 .request-actions { display: flex; gap: 7px; }
 .original-message { margin: 0; border-top: 1px solid var(--rule); }
 .original-message summary { padding: 9px 15px; color: var(--muted); font-size: 12px; }
@@ -225,7 +225,7 @@ h3 { margin-bottom: 6px; font-size: 13px; font-weight: 700; }
 
 details.history-block, details.roles-block { margin-top: 24px; border-top: 1px solid var(--rule-strong); }
 details > summary { display: flex; justify-content: space-between; padding: 13px 0; font-weight: 700; }
-.summary-meta { color: var(--muted); font: 12px var(--mono); font-weight: 400; }
+.summary-meta { color: var(--muted); font: 12px var(--sans); font-weight: 400; }
 .filter-bar { display: flex; gap: 6px; margin-bottom: 10px; }
 .filter { padding: 6px 11px; color: var(--muted); background: transparent; border: 1px solid var(--rule); font-weight: 700; }
 .filter:hover { color: var(--text); border-color: var(--rule-strong); }
@@ -238,7 +238,7 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 }
 .history-row:last-child, .task-row:last-child { border-bottom: 1px solid var(--rule); }
 .history-row .summary, .task-row .summary { color: var(--text); }
-.state { display: inline-block; padding: 2px 8px; font: 700 11px var(--mono); text-align: center; border: 1px solid transparent; }
+.state { display: inline-block; padding: 2px 8px; font: 700 11px var(--sans); text-align: center; border: 1px solid transparent; }
 .state-pending { color: var(--waiting); background: var(--waiting-dim); border-color: var(--waiting); }
 .state-running { color: var(--running); background: var(--violet-dim); border-color: var(--running); }
 .state-done { color: var(--done); background: #07241a; border-color: var(--done); }
@@ -256,8 +256,8 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .person-row.is-selected { background: var(--accent-dim); box-shadow: inset 2px 0 0 var(--accent-bright); }
 .person-name { display: block; margin-bottom: 2px; font-weight: 700; }
 .person-key { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.person-impact { display: block; margin-top: 5px; color: var(--faint); font: 11px var(--mono); }
-.person-role { float: right; margin-left: 8px; color: var(--text); font: 11px var(--mono); }
+.person-impact { display: block; margin-top: 5px; color: var(--faint); font: 11px var(--sans); }
+.person-role { float: right; margin-left: 8px; color: var(--text); font: 11px var(--sans); }
 .editor-pane { min-width: 0; padding: 18px; background: transparent; }
 .empty-state { position: relative; padding: 28px 0 28px 22px; color: var(--muted); min-height: 32px; border-left: 1px solid var(--rule); }
 .empty-state::before {
@@ -274,14 +274,14 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .field textarea { min-height: 70px; resize: vertical; }
 .scope-groups { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 10px; }
 .scope-group { min-width: 0; margin: 0; padding: 8px 10px 10px; border: 1px solid var(--rule); }
-.scope-group legend { padding: 0 5px; color: var(--accent-bright); font: 700 11px var(--mono); }
+.scope-group legend { padding: 0 5px; color: var(--accent-bright); font: 700 11px var(--sans); }
 .scope-option { display: grid; grid-template-columns: auto 1fr; gap: 8px; padding: 6px 2px; }
 .scope-option input { margin: 3px 0 0; accent-color: var(--accent); }
 .scope-option-text { min-width: 0; }
 .scope-name { display: block; color: var(--text); font-size: 11px; overflow-wrap: anywhere; }
 .scope-purpose { display: block; color: var(--faint); font-size: 11px; }
 .scope-option.is-inherited { opacity: .7; }
-.inherited-mark { margin-left: 5px; color: var(--muted); font: 10px var(--mono); }
+.inherited-mark { margin-left: 5px; color: var(--muted); font: 10px var(--sans); }
 .editor-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--rule-strong); }
 .save-actions { display: flex; gap: 8px; }
 .roles-list { display: grid; gap: 14px; }
@@ -289,7 +289,7 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .role-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .role-card-actions { display: flex; gap: 8px; }
 .role-name { font-weight: 700; color: var(--accent-bright); font-size: 15px; }
-.role-scopes { color: var(--muted); font: 11px/1.6 var(--mono); }
+.role-scopes { color: var(--muted); font: 11px/1.6 var(--sans); }
 .role-editor { display: grid; gap: 10px; padding: 12px; margin-top: 12px; background: var(--panel-raised); border: 1px solid var(--rule-strong); }
 /* The one standing warning: amber is reserved for "needs you", and a send scope in a
    role is exactly that -- Blatbot can speak as itself for this role's members without
@@ -297,15 +297,15 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .role-warning { margin: 10px 0 0; padding: 8px 10px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font-size: 12px; }
 .role-scope-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
 .role-scope-columns h4 { margin: 0 0 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-.write-mark { margin-left: 6px; padding: 1px 6px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+.write-mark { margin-left: 6px; padding: 1px 6px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .03em; }
 /* The one built-in, non-editable role: same card shape, no action affordances. */
 .role-card-locked { border-color: var(--accent); }
-.role-locked-badge { padding: 1px 8px; color: var(--accent-bright); background: var(--panel-raised); border: 1px solid var(--accent); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+.role-locked-badge { padding: 1px 8px; color: var(--accent-bright); background: var(--panel-raised); border: 1px solid var(--accent); font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .03em; }
 .role-locked-description { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
 .person-role-locked { opacity: .85; }
 .person-role-locked-hint { font-size: 11px; }
 .person-commander-note { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
-.send-mark { margin-left: 4px; padding: 1px 6px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+.send-mark { margin-left: 4px; padding: 1px 6px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .03em; }
 .scope-kind-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .scope-kind-list li { display: grid; gap: 1px; }
 .role-members { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule); }
@@ -334,18 +334,18 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 
 .task-row { grid-template-columns: minmax(100px,.5fr) minmax(260px,2fr) 110px 170px minmax(120px,.6fr); width: 100%; color: var(--muted); background: transparent; border-right: 0; border-left: 0; text-align: left; }
 .task-row:hover { background: var(--panel-raised); }
-.participant-list { font: 11px var(--mono); overflow-wrap: anywhere; }
+.participant-list { font: 11px var(--sans); overflow-wrap: anywhere; }
 .health-grid { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule-strong); }
 .health-stat { padding: 16px; border-right: 1px solid var(--rule-strong); }
 .health-stat:last-child { border-right: 0; }
 .health-stat dt { margin-bottom: 5px; color: var(--muted); font-size: 12px; }
-.health-stat dd { margin: 0; font: 800 18px var(--mono); color: var(--violet-bright); }
+.health-stat dd { margin: 0; font: 800 18px var(--sans); color: var(--violet-bright); }
 .health-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
 .health-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rule); }
 .health-list li { padding: 9px 0; border-bottom: 1px solid var(--rule); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
 
 .settings-list { display: grid; gap: 22px; }
-.settings-group h3 { margin-bottom: 8px; color: var(--muted); font: 700 12px var(--mono); }
+.settings-group h3 { margin-bottom: 8px; color: var(--muted); font: 700 12px var(--sans); }
 .settings-panel { border: 1px solid var(--rule-strong); background: transparent; }
 .setting-row { display: grid; grid-template-columns: minmax(260px, 1.4fr) minmax(280px, 1fr); gap: 28px; align-items: center; padding: 15px; border-bottom: 1px solid var(--rule); }
 .setting-row:last-child { border-bottom: 0; }
@@ -353,7 +353,7 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .setting-label { font-weight: 700; }
 .setting-help { margin-top: 3px; max-width: none; color: var(--muted); font-size: 12px; }
 .setting-name { display: block; margin-top: 7px; color: var(--faint); font-size: 11px; overflow-wrap: anywhere; }
-.serious-mark { margin-left: 8px; padding: 1px 6px; color: var(--ink); background: var(--waiting); border: 1px solid var(--waiting); font: 800 10px var(--mono); vertical-align: 1px; }
+.serious-mark { margin-left: 8px; padding: 1px 6px; color: var(--ink); background: var(--waiting); border: 1px solid var(--waiting); font: 800 10px var(--sans); vertical-align: 1px; }
 .setting-value { display: grid; gap: 8px; }
 .setting-value select, .setting-value textarea, .number-control input[type="number"] { width: 100%; padding: 7px 9px; color: var(--text); background: var(--ink); border: 1px solid var(--rule-strong); border-radius: 0; }
 .setting-value textarea { min-height: 36px; resize: none; overflow: hidden; }
@@ -367,7 +367,7 @@ details > summary { display: flex; justify-content: space-between; padding: 13px
 .setting-toggle input:checked + .toggle-track span { background: var(--accent-bright); }
 .setting-toggle input:focus-visible + .toggle-track { outline: 3px solid var(--waiting); outline-offset: 2px; }
 .setting-meta { display: flex; align-items: center; min-height: 24px; gap: 9px; }
-.setting-source { padding: 1px 6px; border: 1px solid var(--rule-strong); color: var(--muted); font: 11px var(--mono); }
+.setting-source { padding: 1px 6px; border: 1px solid var(--rule-strong); color: var(--muted); font: 11px var(--sans); }
 .source-console { color: var(--ink); background: var(--accent-bright); border-color: var(--accent-bright); }
 .source-environment { color: var(--muted); border-color: var(--rule); }
 .source-default { color: var(--faint); }
@@ -381,7 +381,7 @@ dialog::backdrop { background: rgba(0, 4, 16, .8); }
 .dialog-head h2 { margin: 2px 0 0; color: var(--text); }
 .close-button { padding: 6px 10px; color: var(--muted); background: transparent; border: 1px solid var(--rule-strong); font-weight: 700; }
 .close-button:hover { color: var(--text); border-color: var(--failed); background: var(--danger-dim); }
-.ledger-content { margin: 0; padding: 16px 18px; min-height: 240px; max-height: 70vh; overflow: auto; color: var(--text); background: var(--ink); font: 12px/1.7 var(--mono); white-space: pre-wrap; }
+.ledger-content { margin: 0; padding: 16px 18px; min-height: 240px; max-height: 70vh; overflow: auto; color: var(--text); background: var(--ink); font: 12px/1.7 var(--sans); white-space: pre-wrap; }
 .shortcuts-dialog { width: min(500px, calc(100vw - 28px)); }
 .shortcut-list { margin: 0; padding: 10px 18px 18px; }
 .shortcut-list div { display: grid; grid-template-columns: 95px 1fr; padding: 8px 0; border-bottom: 1px solid var(--rule); }
@@ -428,56 +428,48 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
   .settings-panel, .people-layout, .health-grid { overflow-x: auto; }
 }
 
-/* Home: a calm overview, not a grid of identical boxes. "Needs you" always leads and
-   is the only place amber appears; every other block is a quiet dark-glass panel with
-   a thin blue top edge and the circuit-line motif used once, in the page corner. */
+/* Home: four plain sections, stuck first because that is what the owner cannot see
+   anywhere else. Every sentence, label and action comes from the overview API; this
+   file only lays the rows out. "Stuck" is the one place amber shows real weight, and
+   only while something actually is stuck -- at zero it drops to the same quiet
+   register as every other section, no border glow. */
 .home-section { padding-top: 26px; }
 .home-grid {
   display: grid; gap: 14px;
   grid-template-columns: repeat(6, 1fr);
   grid-template-areas:
-    "needs needs needs needs needs needs"
-    "right right right recent recent recent"
-    "coming coming people people contacts contacts";
+    "stuck stuck stuck stuck stuck stuck"
+    "running running running done done done"
+    "coming coming coming coming coming coming";
 }
 .home-card {
   position: relative; min-width: 0; padding: 18px 20px; background: var(--panel);
   border: 1px solid var(--rule-strong); border-top: 2px solid var(--accent);
   display: flex; flex-direction: column; gap: 12px;
 }
-.home-needs-you { grid-area: needs; border-top-color: var(--waiting); }
-.home-right-now { grid-area: right; }
-.home-recent-activity { grid-area: recent; }
+.home-stuck { grid-area: stuck; border-top-color: var(--waiting); }
+.home-running { grid-area: running; }
+.home-done-today { grid-area: done; }
 .home-coming-up { grid-area: coming; }
-.home-people { grid-area: people; }
-.home-contacts { grid-area: contacts; }
 .home-card-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .home-card-head h2 { margin: 0; font-size: 15px; color: var(--text); }
 .home-card-body { margin: 0; }
 .home-card-link { margin-top: auto; padding-top: 2px; color: var(--accent-bright); font-size: 12px; text-decoration: none; }
 .home-card-link:hover { text-decoration: underline; }
-.home-pill { padding: 2px 9px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 11px var(--mono); }
-/* "Needs you" is the one place amber shows for real weight, and only while something
-   is actually waiting -- when the count is zero the card drops to the same quiet
-   register as everything else, no border glow, no big number. */
-.home-needs-you.is-urgent {
+.home-pill { padding: 2px 9px; color: var(--waiting); background: var(--waiting-dim); border: 1px solid var(--waiting); font: 700 11px var(--sans); }
+.home-stuck.is-urgent {
   border-top-color: var(--waiting); box-shadow: 0 0 22px rgba(214, 161, 87, .12);
 }
-.home-needs-you.is-urgent .home-card-head h2 { color: var(--waiting); }
+.home-stuck.is-urgent .home-card-head h2 { color: var(--waiting); }
 .home-needs-count {
-  min-width: 30px; padding: 2px 8px; text-align: center; font: 800 18px var(--mono);
+  min-width: 30px; padding: 2px 8px; text-align: center; font: 800 18px var(--sans);
   color: var(--faint); background: transparent; border: 1px solid var(--rule-strong);
 }
-.home-needs-you.is-urgent .home-needs-count { color: var(--ink); background: var(--waiting); border-color: var(--waiting); }
-.home-needs-you.is-quiet { border-top-color: var(--rule-strong); }
-.home-oldest-summary {
-  margin: 0; padding: 10px 14px; max-width: none; color: var(--text); background: var(--waiting-dim);
-  border-left: 2px solid var(--waiting); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere;
-}
-.home-needs-you .button { align-self: flex-start; }
+.home-stuck.is-urgent .home-needs-count { color: var(--ink); background: var(--waiting); border-color: var(--waiting); }
+.home-stuck.is-quiet { border-top-color: var(--rule-strong); }
 .home-status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; }
 .home-status-grid dt { margin-bottom: 3px; color: var(--muted); font-size: 11px; }
-.home-status-grid dd { margin: 0; font: 700 13px var(--mono); }
+.home-status-grid dd { margin: 0; font: 700 13px var(--sans); }
 .home-running-count { color: var(--running); }
 .home-mini-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .home-mini-list li {
@@ -488,11 +480,19 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 .home-mini-list li:first-child { border-top: 0; }
 .home-mini-summary { min-width: 0; overflow-wrap: anywhere; color: var(--text); font-size: 12px; }
 .home-mini-list .muted { font-size: 11px; }
+/* A stuck row: its sentence and since-when stack above its fix buttons, which wrap
+   on narrow screens rather than overflow. */
+.home-row { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--rule); }
+.home-row:first-child { border-top: 0; }
+.home-row-body { display: flex; flex-direction: column; gap: 3px; }
+.home-row-body .home-card-body { font-size: 13px; overflow-wrap: anywhere; }
+.home-row-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.home-sources { grid-column: 1 / -1; margin: 2px 2px 0; color: var(--muted); font-size: 11px; }
 
 @media (max-width: 1100px) {
   .home-grid {
     grid-template-columns: 1fr;
-    grid-template-areas: "needs" "right" "recent" "coming" "people" "contacts";
+    grid-template-areas: "stuck" "running" "done" "coming";
   }
 }
 @media (max-width: 760px) {
@@ -646,7 +646,7 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 .ledger-entry { padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .ledger-entry:first-child { padding-top: 0; }
 .ledger-entry:last-child { border-bottom: 0; padding-bottom: 0; }
-.ledger-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 6px; color: var(--muted); font: 11px var(--mono); }
+.ledger-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 6px; color: var(--muted); font: 11px var(--sans); }
 .ledger-kind { padding: 1px 7px; border: 1px solid var(--rule-strong); color: var(--accent-bright); font-weight: 700; }
 .ledger-kind-done, .ledger-kind-approved { color: var(--done); border-color: var(--done); }
 .ledger-kind-failed, .ledger-kind-rejected, .ledger-kind-expired { color: var(--failed); border-color: var(--failed); }
@@ -660,10 +660,10 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 .scope-detail-row { padding: 8px 0; border-bottom: 1px solid var(--rule); }
 .scope-detail-row:last-child { border-bottom: 0; }
 .scope-detail-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.scope-detail-kind { font: 700 10px var(--mono); padding: 1px 6px; border: 1px solid var(--rule-strong); color: var(--muted); }
+.scope-detail-kind { font: 700 10px var(--sans); padding: 1px 6px; border: 1px solid var(--rule-strong); color: var(--muted); }
 .scope-detail-kind.is-read { color: var(--done); border-color: var(--done); }
 .scope-detail-kind.is-write, .scope-detail-kind.is-send { color: var(--accent-bright); border-color: var(--accent-bright); }
-.scope-detail-tools { margin: 4px 0 0; font: 11px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.scope-detail-tools { margin: 4px 0 0; font: 11px var(--sans); color: var(--muted); overflow-wrap: anywhere; }
 .scope-detail-roles { margin: 4px 0 0; font: 12px var(--sans); color: var(--muted); }
 
 /* Scopes page: one left-to-right tree. root -> system -> branch -> scope -> tools */
