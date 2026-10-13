@@ -755,6 +755,7 @@ button.h-label:hover { border-color: var(--accent-bright); }
 /* -- Who can do what (Roles page) -------------------------------------- */
 .roles-who-can-field { margin: 0 0 14px; max-width: 420px; }
 .who-can-results { margin: 0 0 16px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--rule-strong); display: grid; gap: 10px; }
+.who-can-results[hidden] { display: none; }
 .who-can-match { display: grid; gap: 4px; }
 .who-can-phrase { color: var(--text); font-weight: 700; font-size: 13px; }
 .who-can-role-line { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
