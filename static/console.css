@@ -541,6 +541,9 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 6px; border: 1px soli
 /* Capability chips: same chip shape as the rest of the console, but in the page's
    normal text face -- Schedules is the one place that rule was missed. */
 .schedule-capability-chip { display: inline-block; padding: 2px 8px; margin: 2px 6px 2px 0; color: var(--accent-bright); background: var(--accent-dim); border: 1px solid var(--rule-strong); font: 700 11px/1.5 var(--sans); }
+.repair-sentence { margin: 0 0 12px; color: var(--text); }
+.repair-removed { margin: 4px 0 0; text-decoration: line-through; color: var(--muted); }
+.repair-removed-why { margin: 2px 0 10px; font-size: 12px; }
 .capability-label { font-family: var(--sans); }
 
 .schedule-action-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rule); }

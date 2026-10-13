@@ -332,6 +332,9 @@ async function homeAction(action) {
       await post('/schedules/action', { id: target.id, action: target.action });
     } else if (target.endpoint === 'schedules/edit') {
       await post('/schedules/edit', { id: target.id, scopes: target.scopes });
+    } else if (target.endpoint === 'schedules/repair') {
+      openRepairDialog(target.id);
+      return;
     } else if (target.endpoint === 'schedules') {
       navigate(VIEW_PATHS.schedules);
       return;
@@ -1064,6 +1067,7 @@ async function refreshTasks({ throwOnError = false } = {}) {
 const ACTION_LABELS = {
   pause: 'Pause', resume: 'Resume', run_now: 'Run now', stop: 'Stop',
   edit: 'Edit', approve: 'Approve', reject: 'Reject', start_again: 'Start again',
+  repair: 'Repair and resume',
 };
 
 state.scheduleErrors = new Map();   // schedule id -> inline 409 message
@@ -1344,6 +1348,79 @@ async function saveSchedule(form) {
   finally { setFormBusy(form, false); }
 }
 
+// -- one-step repair dialog (ScheduleService.repair_plan/repair_apply) ------
+
+state.repairPlan = null;
+
+function renderRepairCadenceOptions(selectedKind) {
+  const main = state.scheduleKinds.filter(k => k.kind !== 'cron');
+  const cron = state.scheduleKinds.find(k => k.kind === 'cron');
+  const host = $('#repair-cadence-options');
+  host.innerHTML = main.map(k => `<div class="cadence-option">
+    <label><input type="radio" name="cadence_kind" value="${escapeHTML(k.kind)}" ${selectedKind === k.kind ? 'checked' : ''}>${escapeHTML(k.label)}</label>
+    <div class="cadence-fields" data-cadence-fields="${escapeHTML(k.kind)}" ${selectedKind === k.kind ? '' : 'hidden'}>${cadenceFieldsHTML(k.kind)}</div>
+  </div>`).join('') + (cron ? `<div class="cadence-option">
+    <label><input type="radio" name="cadence_kind" value="cron" ${selectedKind === 'cron' ? 'checked' : ''}>${escapeHTML(cron.label)}</label>
+    <div class="cadence-fields" data-cadence-fields="cron" ${selectedKind === 'cron' ? '' : 'hidden'}>${cadenceFieldsHTML('cron')}</div>
+  </div>` : '');
+}
+
+function renderRepairDialog() {
+  const plan = state.repairPlan;
+  if (!plan) return;
+  $('#repair-sentence').textContent = plan.sentence;
+  const timingFieldset = $('#repair-timing-fieldset');
+  if (plan.timing) {
+    // A timing the plan already recovered: shown prefilled, still editable with the
+    // same "When" control the edit form uses, but not required -- it is already set.
+    timingFieldset.hidden = false;
+    renderRepairCadenceOptions(plan.timing.cadence_kind);
+    fillCadenceFields($('#repair-form'), plan.timing.cadence_kind, plan.timing.cadence);
+  } else {
+    // No timing recovered from the old instructions: the owner must choose one.
+    timingFieldset.hidden = false;
+    renderRepairCadenceOptions(state.scheduleKinds[0]?.kind || 'every');
+  }
+  $('#repair-capabilities-block').innerHTML = (plan.add_capabilities || []).length
+    ? `<fieldset><legend>New permission</legend>${plan.add_capabilities.map(c => `<span class="schedule-capability-chip">${escapeHTML(c.label)}</span>`).join('')}</fieldset>`
+    : '';
+  $('#repair-removals-block').innerHTML = (plan.prompt_changes || []).length
+    ? `<fieldset><legend>Instructions to remove</legend>${plan.prompt_changes.map(c => `<p class="repair-removed">${escapeHTML(c.remove)}</p><p class="muted repair-removed-why">${escapeHTML(c.why)}</p>`).join('')}</fieldset>`
+    : '';
+  $('#repair-submit').textContent = (plan.add_capabilities || []).length || (plan.prompt_changes || []).length
+    ? 'Apply and ask me to approve' : 'Apply and resume';
+}
+
+async function openRepairDialog(id) {
+  try {
+    const plan = await api(`/schedules/${encodeURIComponent(id)}/repair`);
+    state.repairPlan = plan;
+    $('#repair-id').value = id;
+    renderRepairDialog();
+    $('#repair-dialog').showModal();
+  } catch (error) {
+    showNotice(`Could not load the repair plan: ${error.message}`, 'error');
+  }
+}
+
+async function saveRepair(form) {
+  const id = Number($('#repair-id').value);
+  const plan = state.repairPlan;
+  const payload = { id };
+  if (!plan?.timing) {
+    payload.timing = { cadence_kind: form.cadence_kind.value, cadence: cadencePayload(form) };
+  }
+  setFormBusy(form, true);
+  try {
+    const result = await post('/schedules/repair', payload);
+    $('#repair-dialog').close();
+    showNotice(result.message || 'Repaired.', 'info', 0);
+    await refreshSchedules({ throwOnError: false });
+    await refreshHome({ throwOnError: false });
+  } catch (error) { showNotice(`Could not repair it: ${error.message}`, 'error'); }
+  finally { setFormBusy(form, false); }
+}
+
 async function scheduleAction(id, action) {
   state.scheduleErrors.delete(id);
   try {
@@ -1620,6 +1697,7 @@ document.addEventListener('click', event => {
   if (scheduleActionButton) {
     const id = Number(scheduleActionButton.closest('[data-schedule-id]').dataset.scheduleId);
     if (scheduleActionButton.dataset.scheduleAction === 'edit') openScheduleEditor(state.schedules.find(schedule => schedule.id === id));
+    else if (scheduleActionButton.dataset.scheduleAction === 'repair') openRepairDialog(id);
     else scheduleAction(id, scheduleActionButton.dataset.scheduleAction);
   }
   const letItButton = event.target.closest('[data-schedule-let-it]');
@@ -1659,6 +1737,7 @@ document.addEventListener('submit', event => {
   event.preventDefault();
   if (event.target.id === 'person-form') savePerson(event.target);
   if (event.target.id === 'schedule-form') saveSchedule(event.target);
+  if (event.target.id === 'repair-form') saveRepair(event.target);
   if (event.target.id === 'new-role-form') {
     const input = event.target.querySelector('[name="name"]');
     createRole(input.value);

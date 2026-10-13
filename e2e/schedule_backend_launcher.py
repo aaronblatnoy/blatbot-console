@@ -178,6 +178,21 @@ def _seed(store: Store) -> None:
     )
     store.update_schedule(s5.id, state="active", next_run=now + 1800)
 
+    # 6. Paused with no cadence at all, migrated from the old continue-kind model:
+    # its prompt still tells a run to call the removed schedule_continue tool, and
+    # it names a contacts tool its scopes do not grant -- exactly ScheduleService.
+    # repair_plan()'s target case.
+    task_id = store.create_task("Pledge drive watch")["id"]
+    s6 = store.create_schedule(
+        chat_id="owner", task_id=task_id, title="Pledge drive watch",
+        prompt=("Check the pledge drive page every 4 hours and tell me the total.\n\n"
+                "When done, call schedule_continue with delay_minutes 240 to run again.\n\n"
+                "If the total changed, call inkbox_update_contact with the new total."),
+        kind="", scopes=["web"], timezone="America/New_York", report_mode="changed",
+        cadence_kind="", cadence={}, origin_mode="console", origin_chat_id="owner",
+    )
+    store.update_schedule(s6.id, state="paused", last_outcome="needs a cadence")
+
 
 async def run(host: str, port: int, allowed_origins: str, db_path: str) -> None:
     os.environ["CONSOLE_ALLOWED_ORIGINS"] = allowed_origins

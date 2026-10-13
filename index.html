@@ -246,6 +246,24 @@
     </form>
   </dialog>
 
+  <dialog id="repair-dialog" class="ledger-dialog schedule-dialog">
+    <form id="repair-form">
+      <div class="dialog-head">
+        <h2 id="repair-dialog-title">Repair and resume</h2>
+        <button class="close-button" type="button" data-close-dialog="repair-dialog">Close</button>
+      </div>
+      <input id="repair-id" type="hidden">
+      <p id="repair-sentence" class="repair-sentence"></p>
+      <fieldset id="repair-timing-fieldset" class="cadence-fieldset">
+        <legend>When</legend>
+        <div id="repair-cadence-options"></div>
+      </fieldset>
+      <div id="repair-capabilities-block"></div>
+      <div id="repair-removals-block"></div>
+      <div class="form-actions"><button id="repair-submit" class="button button-primary" type="submit">Apply and ask me to approve</button></div>
+    </form>
+  </dialog>
+
   <dialog id="shortcuts-dialog" class="shortcuts-dialog">
     <div class="dialog-head">
       <h2>Keyboard</h2>
