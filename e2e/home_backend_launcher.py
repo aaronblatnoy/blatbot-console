@@ -1,4 +1,4 @@
-"""Launches the REAL console backend from ~/blatbot/worktrees/ux-p5 (the Builder P5
+"""Launches the REAL console backend from ~/blatbot/worktrees/ux-p3 (the Builder P5
 backend working copy: inkbox_claude.console + inkbox_claude.gate, the real
 ScheduleService and cadence/schedprop/scopes modules) against a throwaway temp-dir
 SQLite database, seeded with made-up schedules and requests through the store and
@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-BACKEND_REPO = Path(os.environ.get("E2E_HOME_BACKEND_REPO", str(Path.home() / "blatbot/worktrees/ux-p5")))
+BACKEND_REPO = Path(os.environ.get("E2E_HOME_BACKEND_REPO", str(Path.home() / "blatbot/worktrees/ux-p3")))
 sys.path.insert(0, str(BACKEND_REPO))
 
 from aiohttp import web  # noqa: E402
@@ -192,6 +192,61 @@ def _seed(store: Store) -> None:
     store.update_schedule(s4.id, state="active", next_run=now + 86400)
     _add_run(store, s4.id, started_at=now - 3600, outcome="complete",
              result_line="Sorted 12 messages into 3 folders.", finished_at=now - 3500)
+
+    # Realistic voice hand-off shapes (the coordinator's merged-backend pass): a
+    # request whose summary and task title are the historical 90-char hard cut of
+    # the whole call transcript, cut mid-word, with the real section headings and
+    # "blatbot:"/"caller:" line prefixes; one failed with the exact JSON buffer-size
+    # error string. Also a schedule whose own linked request fails (schedule_id
+    # set, must never show up as a second, separate Stuck row) with a first-person
+    # RESULT line from the run itself.
+    phone = "+15557654321"
+    transcript = "\n".join([
+        f"Live phone call with {phone}. Blatbot's voice side has handed this off because the caller needs "
+        "something done or looked up. The lines below are speech-recognition transcript, so expect misheard "
+        "words, unfinished phrases and later corrections; trust the latest version of what they said.",
+        "", "Earlier in the call (already handled, for context only):",
+        "blatbot: Hi, this is Blatbot, Aaron's assistant.\ncaller: Hey, I had a question.",
+        "", "What was just said (act on this):",
+        "blatbot: What can I help with?\ncaller: I want to sign up for the pottery course on Saturday morning, "
+        "and also ask whether the studio has parking nearby since I have never been before.\n"
+        "blatbot: Let me check on that for you.",
+        "", "Work out what the caller is asking for right now and handle it.",
+    ])
+    cut_summary = transcript[:90]
+    task_id = store.create_task(cut_summary)["id"]
+    store.create_request(
+        chat_id="voice-pending", sender=phone, sender_name="", mode="voice", subject="",
+        original_message=transcript, summary=cut_summary, scopes=[], prompt=cut_summary,
+        state="pending", task_id=task_id,
+    )
+    task_id = store.create_task(cut_summary)["id"]
+    buffer_failed = store.create_request(
+        chat_id="voice-failed", sender=phone, sender_name="", mode="voice", subject="",
+        original_message=transcript, summary=cut_summary, scopes=[], prompt=cut_summary,
+        state="failed", task_id=task_id,
+    )
+    store.set_state(buffer_failed.id, "failed", status={
+        "error": "Failed to decode JSON: JSON message exceeded maximum buffer size of 1048576 bytes.",
+    })
+
+    task_id = store.create_task("Pottery studio follow-up")["id"]
+    s_voice = store.create_schedule(
+        chat_id="owner", task_id=task_id, title="Pottery studio follow-up",
+        prompt="Check back with the pottery studio about Saturday availability.",
+        kind="daily", scopes=["web"], timezone="America/New_York",
+        report_mode="changed", cadence_kind="daily", cadence={"time": "09:00"},
+        report_every_time=False, origin_mode="console", origin_chat_id="owner",
+    )
+    store.update_schedule(s_voice.id, state="active", next_run=now + 1800)
+    run_req = store.create_request(
+        chat_id="owner", sender="owner", sender_name="Blatbot", mode="schedule", subject="",
+        original_message="", summary="Checking the pottery studio.", scopes=["web"],
+        prompt="check the pottery studio", state="failed", task_id=task_id, schedule_id=s_voice.id,
+    )
+    store.set_state(run_req.id, "failed", status={"error": "could not reach the studio's booking page"})
+    _add_run(store, s_voice.id, started_at=now - 600, outcome="failed",
+             result_line="I could not find a way to check Saturday availability on the studio's site.")
 
     # Coming up: three more active schedules with future next_run times.
     for i, title in enumerate(["Afternoon check-in", "Evening digest", "Weekend summary"]):

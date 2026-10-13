@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end check of the new Home page against the REAL backend in
-# ~/blatbot/worktrees/ux-p5 (not a stub): starts that backend's actual
+# ~/blatbot/worktrees/ux-p3 (not a stub): starts that backend's actual
 # inkbox_claude.console routes, seeded with made-up schedules/requests through the
 # real Store + ScheduleService, bound to this box's Tailscale address (exercising
 # the real tailnet_gate), and this repo's real frontend. Never touches
@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_VENV="${E2E_BACKEND_PYTHON:-$HOME/blatbot/app/.venv/bin/python}"
 E2E_VENV="${E2E_PYTHON:-$HOME/scratch/pw-venv/bin/python}"
-export E2E_HOME_BACKEND_REPO="${E2E_HOME_BACKEND_REPO:-$HOME/blatbot/worktrees/ux-p5}"
+export E2E_HOME_BACKEND_REPO="${E2E_HOME_BACKEND_REPO:-$HOME/blatbot/worktrees/ux-p3}"
 
 BACKEND_PORT="${E2E_BACKEND_PORT:-18845}"
 FRONTEND_PORT="${E2E_FRONTEND_PORT:-18846}"
