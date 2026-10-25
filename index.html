@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#00010d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=roles1">
+  <link rel="stylesheet" href="/static/console.css?v=groups1">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -24,6 +24,7 @@
       <a href="/console/roles" data-route="roles">Roles</a>
       <a href="/console/tasks" data-route="tasks">Tasks</a>
       <a href="/console/schedules" data-route="schedules">Schedules</a>
+      <a href="/console/groups" data-route="groups">Group chats</a>
       <a href="/console/health" data-route="health">Health</a>
       <a href="/console/settings" data-route="settings">Settings</a>
     </nav>
@@ -36,6 +37,7 @@
         <option value="/console/roles">Roles</option>
         <option value="/console/tasks">Tasks</option>
         <option value="/console/schedules">Schedules</option>
+        <option value="/console/groups">Group chats</option>
         <option value="/console/health">Health</option>
         <option value="/console/settings">Settings</option>
       </select>
@@ -188,6 +190,17 @@
       <div id="schedules-list" class="schedule-list" aria-live="polite" aria-busy="true"></div>
     </section>
 
+    <section id="groups" class="section" data-view="groups" aria-labelledby="groups-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="groups-title">Group chats</h2>
+          <p class="section-summary">Every group chat Blatbot sits in, and how freely it may speak into each one without being asked. Natural judges each message; mention only replies when it is named, replied to, or @mentioned; silent reads for context and digests but never replies.</p>
+        </div>
+        <button id="refresh-groups" class="button button-quiet" type="button">Refresh</button>
+      </div>
+      <div id="groups-list" class="groups-list" aria-live="polite" aria-busy="true"></div>
+    </section>
+
     <section id="health" class="section health-section" data-view="health" aria-labelledby="health-title" hidden>
       <div class="section-heading">
         <div>
@@ -286,6 +299,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=roles1"></script>
+  <script type="module" src="/static/console.js?v=groups1"></script>
 </body>
 </html>

@@ -24,6 +24,7 @@ const state = {
   tasks: [],
   schedules: [],
   schedulesPaused: false,
+  groups: [],
   health: null,
   settings: [],
   settingStatus: {},
@@ -50,6 +51,7 @@ const VIEW_PATHS = {
   scopes: '/console/scopes',
   tasks: '/console/tasks',
   schedules: '/console/schedules',
+  groups: '/console/groups',
   health: '/console/health',
   settings: '/console/settings',
 };
@@ -141,6 +143,7 @@ function routeFromPath(pathname = location.pathname) {
     catch { return { view: 'tasks', taskId: encodedId }; }
   }
   if (path === '/console/schedules') return { view: 'schedules', taskId: null };
+  if (path === '/console/groups') return { view: 'groups', taskId: null };
   if (path === '/console/health') return { view: 'health', taskId: null };
   if (path === '/console/settings') return { view: 'settings', taskId: null };
   return { view: 'home', taskId: null, unknown: true };
@@ -179,6 +182,7 @@ async function loadView(view = state.activeView, { force = false } = {}) {
     if (view === 'scopes') await refreshScopesBreakdown({ throwOnError: true });
     if (view === 'tasks') await refreshTasks({ throwOnError: true });
     if (view === 'schedules') await refreshSchedules({ throwOnError: true });
+    if (view === 'groups') await refreshGroups({ throwOnError: true });
     if (view === 'health') await refreshHealth({ throwOnError: true });
     if (view === 'settings') await refreshSettings({ throwOnError: true });
     setStarting(false);
@@ -205,7 +209,7 @@ async function loadSnapshot({ quiet = false } = {}) {
 }
 
 function renderUnavailable() {
-  for (const selector of ['#home-content', '#waiting-list', '#people-list', '#tasks-list', '#health-content', '#settings-list']) {
+  for (const selector of ['#home-content', '#waiting-list', '#people-list', '#tasks-list', '#groups-list', '#health-content', '#settings-list']) {
     const target = $(selector);
     if (target && !target.children.length) target.innerHTML = '<div class="empty-state">Data is not available yet.</div>';
   }
@@ -1222,6 +1226,60 @@ async function refreshSchedules({ throwOnError = false } = {}) {
   }
 }
 
+const GROUP_MODE_OPTIONS = [
+  { value: 'natural', label: 'Natural' },
+  { value: 'mention', label: 'Mention only' },
+  { value: 'silent', label: 'Silent' },
+];
+
+function renderGroups() {
+  const host = $('#groups-list');
+  host.setAttribute('aria-busy', 'false');
+  if (!state.groups.length) {
+    host.innerHTML = '<div class="empty-state">No group chats recorded yet.</div>';
+    return;
+  }
+  host.innerHTML = state.groups.map(g => `<div class="group-row" data-chat-id="${escapeHTML(g.chat_id)}">
+    <div class="group-row-main">
+      <div class="group-row-title">${escapeHTML(g.title)}</div>
+      <div class="group-row-meta">${escapeHTML(g.channel)} &middot; ${g.member_count} member${g.member_count === 1 ? '' : 's'}</div>
+    </div>
+    <label class="group-row-mode">
+      <span class="visually-hidden">Response mode for ${escapeHTML(g.title)}</span>
+      <select data-group-mode aria-label="Response mode for ${escapeHTML(g.title)}">${GROUP_MODE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === g.response_mode ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
+    </label>
+    <span class="group-row-save-state" role="status"></span>
+  </div>`).join('');
+}
+
+async function saveGroupMode(chatId, mode) {
+  const row = $(`.group-row[data-chat-id="${CSS.escape(chatId)}"]`);
+  const status = row ? $('.group-row-save-state', row) : null;
+  if (status) status.textContent = 'Saving…';
+  try {
+    const result = await post('/groups/mode', { chat_id: chatId, response_mode: mode });
+    state.groups = result.groups || state.groups;
+    if (status) status.textContent = 'Saved';
+    showNotice('Group chat mode saved.');
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    showNotice(`Mode not saved: ${error.message}`, 'error', 8000);
+    renderGroups();
+  }
+}
+
+async function refreshGroups({ throwOnError = false } = {}) {
+  try {
+    const payload = await api('/groups');
+    state.groups = payload.groups || [];
+    state.loaded.groups = true; state.invalidated.groups = false;
+    renderGroups();
+  } catch (error) {
+    if (throwOnError) throw error;
+    showNotice(`Group chats not refreshed: ${error.message}`, 'error');
+  }
+}
+
 async function loadScheduleHistory(id) {
   try {
     const payload = await api(`/schedules/${encodeURIComponent(id)}/runs`);
@@ -1802,6 +1860,11 @@ document.addEventListener('change', event => {
 });
 
 document.addEventListener('change', event => {
+  if (event.target.matches('[data-group-mode]')) {
+    const row = event.target.closest('[data-chat-id]');
+    if (row) saveGroupMode(row.dataset.chatId, event.target.value);
+    return;
+  }
   if (event.target.matches('[data-setting-control]')) {
     const row = event.target.closest('[data-setting-name]');
     const setting = state.settings.find(item => item.name === row.dataset.settingName);
@@ -1929,6 +1992,7 @@ $$('[data-request-filter]').forEach(button => button.addEventListener('click', (
 $('#mobile-route').addEventListener('change', event => navigate(event.target.value));
 $('#retry-all').addEventListener('click', () => loadSnapshot());
 $('#refresh-tasks').addEventListener('click', refreshTasks);
+$('#refresh-groups').addEventListener('click', () => refreshGroups());
 $('#refresh-health').addEventListener('click', refreshHealth);
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => {
   if (event.target === dialog) dialog.close();
