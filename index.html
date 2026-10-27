@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#00010d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=groups1">
+  <link rel="stylesheet" href="/static/console.css?v=ux20261027">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -65,13 +65,14 @@
       <div class="section-heading">
         <div>
           <h1 id="home-title">Home</h1>
-          <p class="section-summary">A calm overview. Each block opens the page that owns it.</p>
+          <p class="section-summary">Your day at a glance.</p>
         </div>
       </div>
       <div id="home-content" class="home-grid" aria-live="polite" aria-busy="true"></div>
     </section>
 
     <section id="requests" class="section waiting-section" data-view="requests" aria-labelledby="requests-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading waiting-heading">
         <div>
           <h2 id="requests-title">Waiting on you</h2>
@@ -97,10 +98,11 @@
     </section>
 
     <section id="people" class="section" data-view="people" aria-labelledby="people-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div>
           <h2 id="people-title">People</h2>
-          <p class="section-summary">People get roles and contacts. Roles determine what can happen without asking.</p>
+          <p class="section-summary">Contacts and access.</p>
         </div>
         <div class="heading-actions">
           <label class="search-field">
@@ -136,10 +138,11 @@
     </section>
 
     <section id="roles" class="section" data-view="roles" aria-labelledby="roles-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div>
           <h2 id="roles-title">Who can do what</h2>
-          <p id="roles-intro" class="section-summary">Each role is a plain sentence. Expand a role to change what its members can do without asking.</p>
+          <p id="roles-intro" class="section-summary">Choose a role to manage access.</p>
         </div>
         <div class="heading-actions">
           <form id="new-role-form" class="new-role-form" autocomplete="off">
@@ -159,6 +162,7 @@
     </section>
 
     <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div><h2 id="scopes-title">Scopes</h2>
           <p class="section-summary">The tree Blatbot walks to decide what a request may use, left to right: system, then the question asked (or "always"), then the scopes granted, then the tools inside each scope. Click any box to fold or unfold what hangs off it; hover for its description. Role names next to a scope are the roles that hold it.</p></div>
@@ -167,6 +171,7 @@
     </section>
 
     <section id="tasks" class="section" data-view="tasks" aria-labelledby="tasks-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div>
           <h2 id="tasks-title">Tasks</h2>
@@ -178,6 +183,7 @@
     </section>
 
     <section id="schedules" class="section" data-view="schedules" aria-labelledby="schedules-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div>
           <h2 id="schedules-title">Schedules</h2>
@@ -191,10 +197,11 @@
     </section>
 
     <section id="groups" class="section" data-view="groups" aria-labelledby="groups-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div>
           <h2 id="groups-title">Group chats</h2>
-          <p class="section-summary">Every group chat Blatbot sits in, and how freely it may speak into each one without being asked. Natural judges each message; mention only replies when it is named, replied to, or @mentioned; silent reads for context and digests but never replies.</p>
+          <p class="section-summary">Choose when Blatbot replies: naturally, when mentioned, or never.</p>
         </div>
         <button id="refresh-groups" class="button button-quiet" type="button">Refresh</button>
       </div>
@@ -202,6 +209,7 @@
     </section>
 
     <section id="health" class="section health-section" data-view="health" aria-labelledby="health-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div>
           <h2 id="health-title">Health</h2>
@@ -213,6 +221,7 @@
     </section>
 
     <section id="settings" class="section" data-view="settings" aria-labelledby="settings-title" hidden>
+      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
         <div>
           <h2 id="settings-title">Settings</h2>
@@ -224,13 +233,18 @@
     </section>
   </main>
 
+  <dialog id="card-detail-dialog" class="ledger-dialog" aria-labelledby="card-detail-title">
+    <div class="dialog-head"><h2 id="card-detail-title">Details</h2><button class="close-button" type="button" data-close-dialog="card-detail-dialog">← Back</button></div>
+    <div id="card-detail-body" class="card-detail-body"></div>
+  </dialog>
+
   <dialog id="task-dialog" class="ledger-dialog">
     <div class="dialog-head">
       <div>
         <span id="ledger-id" class="mono muted"></span>
         <h2 id="ledger-title">Task ledger</h2>
       </div>
-      <button class="close-button" type="button" data-close-dialog="task-dialog" aria-label="Close ledger">Close</button>
+      <button class="close-button" type="button" data-close-dialog="task-dialog" aria-label="Close ledger">← Back</button>
     </div>
     <div id="ledger-content" class="ledger-content"></div>
   </dialog>
@@ -239,7 +253,7 @@
     <form id="schedule-form">
       <div class="dialog-head">
         <h2 id="schedule-dialog-title">New schedule</h2>
-        <button class="close-button" type="button" data-close-dialog="schedule-dialog">Close</button>
+        <button class="close-button" type="button" data-close-dialog="schedule-dialog">← Back</button>
       </div>
       <input id="schedule-id" type="hidden">
       <label>What should it do<textarea id="schedule-prompt" name="prompt" rows="4" required></textarea></label>
@@ -263,7 +277,7 @@
     <form id="repair-form">
       <div class="dialog-head">
         <h2 id="repair-dialog-title">Repair and resume</h2>
-        <button class="close-button" type="button" data-close-dialog="repair-dialog">Close</button>
+        <button class="close-button" type="button" data-close-dialog="repair-dialog">← Back</button>
       </div>
       <input id="repair-id" type="hidden">
       <p id="repair-sentence" class="repair-sentence"></p>
@@ -280,7 +294,7 @@
   <dialog id="shortcuts-dialog" class="shortcuts-dialog">
     <div class="dialog-head">
       <h2>Keyboard</h2>
-      <button class="close-button" type="button" data-close-dialog="shortcuts-dialog" aria-label="Close shortcuts">Close</button>
+      <button class="close-button" type="button" data-close-dialog="shortcuts-dialog" aria-label="Close shortcuts">← Back</button>
     </div>
     <dl class="shortcut-list">
       <div><dt><kbd>/</kbd></dt><dd>Search people and scopes</dd></div>
@@ -299,6 +313,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=groups1"></script>
+  <script type="module" src="/static/console.js?v=ux20261027"></script>
 </body>
 </html>

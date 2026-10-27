@@ -110,9 +110,8 @@ def main():
             page.wait_for_selector('#schedule-dialog[open]')
             page.locator('#schedule-prompt').fill('Watch the status page and tell me if it goes down.')
             page.locator('#schedule-title').fill('Status page watch')
-            page.locator('#schedule-cadence-options input[value=every]').check()
-            # Only the selected choice's fields show; every other choice collapses to
-            # its radio line.
+            page.locator('#schedule-cadence-options select[name=cadence_kind]').select_option('every')
+            # Only the selected frequency's fields are visible.
             expect(page.locator('[data-cadence-fields=every]')).to_be_visible()
             expect(page.locator('[data-cadence-fields=once]')).to_be_hidden()
             expect(page.locator('[data-cadence-fields=weekly]')).to_be_hidden()

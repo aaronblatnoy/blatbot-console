@@ -138,30 +138,29 @@ def main():
 
         CADENCE_CASES = [
             ('once', 'Once watch', lambda f: (
-                f.locator('#schedule-cadence-options input[value=once]').check(),
+                f.locator('#schedule-cadence-options select[name=cadence_kind]').select_option('once'),
                 f.locator('[data-cadence-fields=once] input[name=cadence_at]').fill('2026-11-03T09:15'),
             ), 'once on Tue Nov 3 at 9:15 AM'),
             ('every', 'Every watch', lambda f: (
-                f.locator('#schedule-cadence-options input[value=every]').check(),
+                f.locator('#schedule-cadence-options select[name=cadence_kind]').select_option('every'),
                 f.locator('[data-cadence-fields=every] input[name=cadence_every_value]').fill('10'),
                 f.locator('[data-cadence-fields=every] select[name=cadence_every_unit]').select_option('minutes'),
             ), 'every 10 minutes'),
             ('daily', 'Daily watch', lambda f: (
-                f.locator('#schedule-cadence-options input[value=daily]').check(),
+                f.locator('#schedule-cadence-options select[name=cadence_kind]').select_option('daily'),
                 f.locator('[data-cadence-fields=daily] input[name=cadence_daily_time]').fill('09:00'),
             ), 'daily at 9:00 AM'),
             ('weekdays', 'Weekdays watch', lambda f: (
-                f.locator('#schedule-cadence-options input[value=weekdays]').check(),
+                f.locator('#schedule-cadence-options select[name=cadence_kind]').select_option('weekdays'),
                 f.locator('[data-cadence-fields=weekdays] input[name=cadence_weekdays_time]').fill('07:30'),
             ), 'weekdays at 7:30 AM'),
             ('weekly', 'Weekly watch', lambda f: (
-                f.locator('#schedule-cadence-options input[value=weekly]').check(),
+                f.locator('#schedule-cadence-options select[name=cadence_kind]').select_option('weekly'),
                 f.locator('[data-cadence-fields=weekly] select[name=cadence_day]').select_option('wed'),
                 f.locator('[data-cadence-fields=weekly] input[name=cadence_weekly_time]').fill('16:00'),
             ), 'Wednesdays at 4:00 PM'),
             ('cron', 'Cron watch', lambda f: (
-                f.locator('.cadence-advanced').evaluate('(e) => e.open = true'),
-                f.locator('#schedule-cadence-advanced input[value=cron]').check(),
+                f.locator('#schedule-cadence-options select[name=cadence_kind]').select_option('cron'),
                 f.locator('[data-cadence-fields=cron] input[name=cadence_expr]').fill('0 9 * * 1-5'),
             ), None),  # cron wording is cron.describe's own job; just confirm it is non-empty
         ]
