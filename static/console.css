@@ -843,3 +843,43 @@ button.h-label:hover { border-color: var(--accent-bright); }
 .role-delete-confirm { margin-top: 8px; padding: 10px; background: var(--waiting-dim); border: 1px solid var(--waiting); display: grid; gap: 8px; }
 .role-delete-confirm-text { margin: 0; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
 .role-delete-confirm-actions { display: flex; gap: 8px; }
+
+/* Whole surfaces open details; controls inside keep their own focus targets. */
+:root { --mono: var(--sans); }
+[data-card-route], [data-request-detail], .schedule-card, .role-row, [data-info-card] { cursor: pointer; }
+:is([data-card-route], [data-request-detail], .schedule-card, .role-row, [data-info-card]):hover { background: var(--panel-raised); border-color: var(--accent-bright); }
+:is([data-card-route], [data-request-detail], .schedule-card, .role-row, [data-info-card], .task-row, .person-row):focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 4px; }
+.home-card { position: relative; min-height: 190px; padding: 24px; }
+.home-card-head { align-items: flex-start; flex-direction: column; gap: 8px; }
+.home-card-head h2 { font-size: 18px; }
+.home-needs-count, .home-stuck.is-urgent .home-needs-count { padding: 0; border: 0; background: none; color: var(--text); font-size: 48px; line-height: 1.1; font-weight: 600; }
+.home-stuck.is-urgent .home-needs-count { color: var(--waiting); }
+.home-card::after { content: '→'; position: absolute; top: 24px; right: 24px; color: var(--accent-bright); font-size: 22px; }
+.home-card-body, .home-mini-summary { font-size: 14px; }
+.home-mini-list .muted { font-size: 12px; }
+.home-sources { display: none; }
+.card-detail-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; padding-top: 20px; }
+.setting-row.is-serious { box-shadow: none; }
+.empty-state { border-left-color: var(--rule); }
+.state, .scope-chip, .schedule-capability-chip, .role-row-locked-badge, .setting-source, .serious-mark, .nav-count { background: none; border: 0; border-radius: 0; padding: 0; }
+.cadence-fields { margin-left: 0; }
+.schedule-last-run dd > span:not(.muted):not(.schedule-outcome) { white-space: pre-wrap; }
+@media (max-width: 760px) {
+  .home-card { min-height: 150px; padding: 20px; }
+  .home-needs-count { font-size: 40px; }
+  #person-editor { scroll-margin-top: 64px; }
+}
+
+.request-card.is-selected, .person-row.is-selected { box-shadow: none; }
+.home-row[data-card-route]:hover { background: var(--panel-raised); }
+.home-row[data-card-route]:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
+summary { cursor: pointer; }
+.history-block > summary { gap: 12px; flex-wrap: wrap; align-items: center; }
+.history-block > summary::after { content: 'Open →'; margin-left: auto; color: var(--accent-bright); white-space: nowrap; }
+.history-block[open] > summary::after { content: '← Back'; }
+
+.page-back { display: inline-block; margin: 0 0 14px; color: var(--accent-bright); text-decoration: none; }
+.person-role-chip, .person-role-chip-locked, .role-locked-badge { background: none; border: 0; border-radius: 0; padding-left: 0; }
+.nav-count { color: var(--waiting); }
+.scope-chip { margin-right: 10px; }
+.person-role-chip-remove { opacity: 1; }
