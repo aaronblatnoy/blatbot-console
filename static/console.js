@@ -267,7 +267,7 @@ const HOME_OUTCOME_WORD = { finished: 'Finished', could_not_finish: 'Could not f
 
 function homeActionButtons(actions) {
   return (actions || [])
-    .map(a => `<button type="button" class="button button-quiet" data-home-action="${escapeHTML(JSON.stringify(a))}">${escapeHTML(a.label)}</button>`)
+    .map(a => a.action === 'wait' ? `<span class="muted">${escapeHTML(a.label)}</span>` : `<button type="button" class="button button-quiet" data-home-action="${escapeHTML(JSON.stringify(a))}">${escapeHTML(a.label)}</button>`)
     .join('');
 }
 
@@ -1125,11 +1125,15 @@ function scheduleLastRunBlock(schedule) {
   if (!run) return '<p class="schedule-last-run muted">No runs yet.</p>';
   const refused = (run.denied || []).map(d => escapeHTML(d.label)).join(', ');
   const outcomeClass = OUTCOME_CLASS[run.outcome] || 'neutral';
+  const failureLabels = { usage_limit: 'Usage limit', missing_permission: 'Missing permission',
+    tool_network_error: 'Tool or network error', could_not_finish: 'Could not finish' };
   return `<div class="schedule-last-run">
     <dt>Last run</dt>
     <dd>
       <span class="schedule-outcome schedule-outcome-${outcomeClass}">${escapeHTML(run.outcome_label)}</span>
       ${run.result_line || run.final_status ? `<span>${escapeHTML(run.result_line || run.final_status)}</span>` : ''}
+      ${run.failure_class ? `<span>${escapeHTML(failureLabels[run.failure_class] || run.failure_class)}</span>` : ''}
+      ${schedule.retry_text ? `<span class="muted">Auto-retrying ${escapeHTML(schedule.retry_text)}</span>` : ''}
       <span class="muted schedule-last-run-time">${escapeHTML(run.started_text)}</span>
       ${run.outcome !== 'complete' && refused ? `<div class="schedule-refused">Refused: ${refused}</div>` : ''}
     </dd>
