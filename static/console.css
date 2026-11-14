@@ -1297,3 +1297,12 @@ dialog::backdrop { background: rgba(0, 1, 13, .72); }
   .home-mini-list li, .home-mini-list li:has(.state) { grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; }
   .home-mini-list li > .muted { grid-column: 1 / -1; font-size: 12px; }
 }
+@media (max-width: 760px) {
+  .section-heading > div:first-child:not(:only-child) { flex: 1 1 100%; text-align: left; }
+  .section-heading > div:first-child > h1, .section-heading > div:first-child > h2 { text-align: left; margin-left: 0; margin-right: auto; }
+}
+@media (max-width: 760px) {
+  .section-heading { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 10px; }
+  .section-heading > div:first-child:not(:only-child), .section-heading > div:only-child { flex: 0 0 auto; width: 100%; }
+  .heading-actions { flex: 0 0 auto; width: 100%; justify-content: flex-start; }
+}
