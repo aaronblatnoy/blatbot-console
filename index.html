@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#00010d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=ux20261027">
+  <link rel="stylesheet" href="/static/console.css?v=polish20261113">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -65,7 +65,6 @@
       <div class="section-heading">
         <div>
           <h1 id="home-title">Home</h1>
-          <p class="section-summary">Your day at a glance.</p>
         </div>
       </div>
       <div id="home-content" class="home-grid" aria-live="polite" aria-busy="true"></div>
@@ -102,7 +101,6 @@
       <div class="section-heading">
         <div>
           <h2 id="people-title">People</h2>
-          <p class="section-summary">Contacts and access.</p>
         </div>
         <div class="heading-actions">
           <label class="search-field">
@@ -114,8 +112,7 @@
           <button id="add-person" class="button button-primary" type="button">Add person</button>
         </div>
       </div>
-      <p class="inline-guidance">Role scopes are managed on the <a href="/console/roles" data-route="roles">Roles page</a>.</p>
-
+      
       <div class="people-layout">
         <div class="people-pane">
           <div class="people-switch" role="group" aria-label="People list">
@@ -164,8 +161,7 @@
     <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
       <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
-        <div><h2 id="scopes-title">Scopes</h2>
-          <p class="section-summary">The tree Blatbot walks to decide what a request may use, left to right: system, then the question asked (or "always"), then the scopes granted, then the tools inside each scope. Click any box to fold or unfold what hangs off it; hover for its description. Role names next to a scope are the roles that hold it.</p></div>
+        <div><h2 id="scopes-title">Scopes</h2></div>
       </div>
       <div id="scopes-breakdown" class="roles-list" aria-live="polite" aria-busy="true"></div>
     </section>
@@ -175,7 +171,6 @@
       <div class="section-heading">
         <div>
           <h2 id="tasks-title">Tasks</h2>
-          <p class="section-summary">Recent work and its recorded ledger.</p>
         </div>
         <button id="refresh-tasks" class="button button-quiet" type="button">Refresh</button>
       </div>
@@ -187,7 +182,6 @@
       <div class="section-heading">
         <div>
           <h2 id="schedules-title">Schedules</h2>
-          <p class="section-summary">Approved unattended work and continuing jobs.</p>
         </div>
         <div class="heading-actions">
           <button id="add-schedule" class="button button-primary" type="button">New schedule</button>
@@ -201,7 +195,6 @@
       <div class="section-heading">
         <div>
           <h2 id="groups-title">Group chats</h2>
-          <p class="section-summary">Choose when Blatbot replies: naturally, when mentioned, or never.</p>
         </div>
         <button id="refresh-groups" class="button button-quiet" type="button">Refresh</button>
       </div>
@@ -213,7 +206,6 @@
       <div class="section-heading">
         <div>
           <h2 id="health-title">Health</h2>
-          <p class="section-summary">Gateway status and recent operational failures.</p>
         </div>
         <button id="refresh-health" class="button button-quiet" type="button">Refresh</button>
       </div>
@@ -225,7 +217,6 @@
       <div class="section-heading">
         <div>
           <h2 id="settings-title">Settings</h2>
-          <p class="section-summary">Knobs that change how the assistant behaves.</p>
         </div>
       </div>
       <div id="settings-list" class="settings-list" aria-live="polite" aria-busy="true"></div>
@@ -313,6 +304,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=ux20261027"></script>
+  <script type="module" src="/static/console.js?v=polish20261113"></script>
 </body>
 </html>
