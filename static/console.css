@@ -1306,3 +1306,55 @@ dialog::backdrop { background: rgba(0, 1, 13, .72); }
   .section-heading > div:first-child:not(:only-child), .section-heading > div:only-child { flex: 0 0 auto; width: 100%; }
   .heading-actions { flex: 0 0 auto; width: 100%; justify-content: flex-start; }
 }
+
+/* ==========================================================================
+   Backdrop. A deliberate deep navy, lit softly from the top left and the bottom
+   right, with the original scene back as a faint texture behind the content.
+   Cards and the sidebar are lighter navy surfaces so they separate from it.
+   ========================================================================== */
+:root {
+  --ink: #0a1430;
+  --panel: rgba(18, 31, 66, .92);
+  --panel-raised: rgba(24, 40, 82, .96);
+  --rule: rgba(148, 176, 230, .13);
+  --rule-strong: rgba(148, 176, 230, .24);
+  --text: #eef3fc;
+  --muted: #b3bfdc;
+  --faint: #99a7c8;
+}
+html { background: #0a1430; }
+body { background: transparent; }
+body::before {
+  z-index: -2;
+  opacity: .62;
+  background: url("/static/scene.svg") center / cover no-repeat;
+}
+body::after {
+  content: "";
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(1100px 700px at 6% -8%, rgba(36, 135, 222, .34), transparent 70%),
+    radial-gradient(1200px 800px at 104% 104%, rgba(36, 135, 222, .26), transparent 68%),
+    linear-gradient(180deg, rgba(10, 20, 48, .30) 0%, rgba(10, 20, 48, .12) 55%, rgba(16, 38, 84, .35) 100%);
+}
+@media (min-width: 761px) {
+  .topbar { background: rgba(14, 26, 58, .97); border-right: 1px solid var(--rule-strong); box-shadow: 1px 0 24px rgba(4, 10, 28, .45); }
+  body::after { left: 212px; }
+}
+@media (max-width: 760px) {
+  .topbar { background: rgba(14, 26, 58, .97); }
+}
+.home-card, .request-card, .schedule-card, .role-row, .group-row, .health-stat, .health-columns > div,
+.settings-panel, .task-list, .people-layout, .request-history, .history-block > summary, .empty-state,
+.who-can-results, .health-grid, .person-role-group {
+  background: var(--panel);
+  border-color: var(--rule-strong);
+  box-shadow: 0 1px 2px rgba(3, 8, 24, .5), 0 8px 22px rgba(3, 8, 24, .32);
+}
+dialog, .ledger-dialog, .shortcuts-dialog { background: #0f1c40; }
+input, select, textarea, .search-field, .new-role-name { background: rgba(8, 16, 40, .55); }
+.people-layout .editor-pane { background: transparent; }
+.connection { background: rgba(148, 176, 230, .08); }
+nav a:hover { background: rgba(148, 176, 230, .09); }
+nav a[aria-current="page"] { background: rgba(36, 135, 222, .20); }
+.people-layout .person-row.is-selected { background: rgba(36, 135, 222, .18); }
