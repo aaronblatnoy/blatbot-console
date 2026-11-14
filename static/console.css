@@ -883,3 +883,426 @@ summary { cursor: pointer; }
 .nav-count { color: var(--waiting); }
 .scope-chip { margin-right: 10px; }
 .person-role-chip-remove { opacity: 1; }
+
+/* ==========================================================================
+   Polish layer (presentation only). Same palette, same type, same blue circuit
+   identity as above. Adds: soft layered shadows, consistent radius, short
+   transitions with hover and press states, a gentle page entrance, status
+   pills, and fewer things competing on each screen.
+   ========================================================================== */
+:root {
+  --r-panel: 10px;
+  --r-ctl: 8px;
+  --shadow-1: 0 1px 2px rgba(0, 1, 13, .55), 0 4px 12px rgba(0, 1, 13, .35);
+  --shadow-2: 0 2px 4px rgba(0, 1, 13, .55), 0 10px 26px rgba(0, 1, 13, .5);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+/* Entrance: each page rises in once when it is shown. Lists are not animated
+   individually, so live refreshes never replay it. */
+@keyframes console-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes console-fade { from { opacity: 0; } to { opacity: 1; } }
+.section:not([hidden]) { animation: console-rise .32s var(--ease) both; }
+dialog[open] { animation: console-rise .22s var(--ease) both; }
+dialog::backdrop { animation: console-fade .2s ease both; }
+
+/* Less to read: no page subtitles, no repeated back links, no helper prose. */
+.section-summary, .inline-guidance, .page-back, .waiting-empty { display: none; }
+.waiting-empty:has(strong) { display: block; padding: 6px 2px; color: var(--muted); font-size: 0; }
+.waiting-empty strong { font-size: 14px; color: var(--text); }
+.settings-scopes-link { margin: 18px 2px 0; font-size: 12px; }
+
+/* Page heading: one slim row, title left, actions right, on one line. */
+.section { padding-top: 24px; }
+.section-heading {
+  align-items: center; flex-wrap: nowrap; padding: 0 2px 14px; margin-bottom: 16px;
+  background: none; border: 0; border-bottom: 1px solid rgba(36, 135, 222, .35); box-shadow: none;
+}
+.section-heading h1, .section-heading h2 { margin: 0; font-size: 20px; letter-spacing: .005em; }
+.heading-actions { flex-wrap: nowrap; margin-left: auto; }
+.search-field { border-radius: var(--r-ctl); }
+
+/* Panels and cards: rounded, soft shadow, lift a little on hover. */
+.home-card, .request-card, .schedule-card, .role-row, .task-list, .request-history, .history-block > summary,
+.health-grid, .health-stat, .health-columns > div, .settings-panel, .people-layout, .group-row, .empty-state,
+.who-can-results, .surface, .ledger-dialog, .shortcuts-dialog, dialog {
+  border-radius: var(--r-panel);
+  box-shadow: var(--shadow-1);
+}
+.home-card, .request-card, .schedule-card, .role-row, .group-row, [data-info-card], .health-stat {
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .15s ease, background-color .15s ease;
+}
+:is(.home-card, .request-card, .schedule-card, .role-row, .group-row, .health-stat, [data-info-card]):hover {
+  box-shadow: var(--shadow-2);
+}
+:is(.schedule-card, .role-row, .request-card):hover { transform: translateY(-1px); }
+.people-layout, .task-list, .settings-panel, .health-grid { overflow: hidden; }
+.settings-panel, .task-list { background: var(--panel); }
+dialog { box-shadow: var(--shadow-2), 0 0 0 1px rgba(36, 135, 222, .25); }
+
+/* Controls: rounded, soft shadow, hover brightens, press sinks. */
+.button, .filter, .key-button, .role-row-toggle, .schedule-history-toggle, select, input, textarea,
+.new-role-name, .close-button {
+  border-radius: var(--r-ctl);
+}
+.button {
+  box-shadow: var(--shadow-1);
+  transition: transform .12s var(--ease), box-shadow .15s ease, background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.button:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.button:active { transform: translateY(1px); box-shadow: 0 1px 1px rgba(0, 1, 13, .6); }
+.button-quiet { box-shadow: none; }
+.button-quiet:hover { box-shadow: var(--shadow-1); }
+.button-primary { box-shadow: var(--shadow-1), 0 0 14px rgba(36, 135, 222, .28); }
+.button-primary:hover { box-shadow: var(--shadow-2), 0 0 18px rgba(36, 135, 222, .4); }
+.filter { transition: background-color .15s ease, border-color .15s ease, color .15s ease; }
+.schedule-history-toggle, .role-row-toggle { transition: color .15s ease, border-color .15s ease; }
+
+/* Navigation: rounded items, soft active state. */
+nav a { transition: color .15s ease, background-color .15s ease, box-shadow .15s ease, padding-left .15s var(--ease); }
+@media (min-width: 761px) {
+  nav a { border-radius: 0 var(--r-ctl) var(--r-ctl) 0; margin-right: 8px; }
+  nav a:hover { padding-left: 20px; }
+  nav a[aria-current="page"] { box-shadow: inset 3px 0 0 var(--accent-bright), var(--shadow-1); }
+}
+.nav-count { padding: 0 6px; border-radius: 999px; color: #1b1402; background: var(--waiting); }
+
+/* Status is always a pill, never bare text. */
+.state, .schedule-outcome, .setting-source, .serious-mark, .role-row-locked-badge, .contact-status {
+  display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px;
+  font: 700 11px/16px var(--sans); border: 1px solid transparent; white-space: nowrap;
+}
+.state { text-transform: capitalize; }
+.state-open, .state-pending { color: var(--waiting); background: var(--waiting-dim); border-color: rgba(214, 161, 87, .5); }
+.state-running, .state-active { color: var(--running); background: var(--violet-dim); border-color: rgba(111, 179, 232, .5); }
+.state-done, .state-finished, .state-complete { color: var(--done); background: #07241a; border-color: rgba(79, 158, 130, .55); }
+.state-failed, .state-stopped { color: var(--failed); background: var(--danger-dim); border-color: rgba(207, 104, 104, .55); }
+.state-neutral, .state-ended, .state-paused { color: var(--muted); background: var(--panel-raised); border-color: var(--rule-strong); }
+.schedule-outcome-neutral { color: var(--muted); background: var(--panel-raised); border-color: var(--rule-strong); }
+.schedule-outcome-pending { color: var(--waiting); background: var(--waiting-dim); border-color: rgba(214, 161, 87, .5); }
+.schedule-outcome-failed { color: var(--failed); background: var(--danger-dim); border-color: rgba(207, 104, 104, .55); }
+.setting-source { color: var(--muted); background: var(--panel-raised); border-color: var(--rule-strong); font-weight: 600; }
+.serious-mark { color: var(--waiting); background: var(--waiting-dim); border-color: rgba(214, 161, 87, .5); margin-left: 8px; }
+.scope-chip, .schedule-capability-chip { padding: 1px 9px; border-radius: 999px; background: var(--panel-raised); border: 1px solid var(--rule); color: var(--accent-bright); font-size: 11px; margin-right: 6px; }
+.person-role-chip, .person-role-chip-locked, .role-locked-badge { padding: 1px 9px; border-radius: 999px; background: var(--panel-raised); border: 1px solid var(--rule-strong); }
+.connection { padding: 4px 10px; border-radius: 999px; background: var(--panel-raised); border: 1px solid var(--rule); }
+.stream-dot { border-radius: 50%; transition: background-color .3s ease, box-shadow .3s ease; }
+
+/* Home: compact cards, empty ones stay short, long text stops at two lines. */
+.home-grid {
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-areas:
+    "stuck stuck stuck running running running"
+    "done done done done coming coming";
+  align-items: start;
+}
+.home-card { min-height: 0; padding: 18px 20px; gap: 6px; border-top-width: 1px; }
+.home-card-head { flex-direction: row; align-items: baseline; justify-content: flex-start; gap: 14px; }
+.home-card-head h2 { font-size: 15px; margin: 0; color: var(--muted); font-weight: 700; }
+.home-needs-count, .home-stuck.is-urgent .home-needs-count { font-size: 34px; line-height: 1; }
+.home-card::after { top: 18px; right: 20px; font-size: 18px; opacity: .6; transition: transform .2s var(--ease), opacity .2s ease; }
+.home-card:hover::after { transform: translateX(3px); opacity: 1; }
+.home-card-body.muted, .home-mini-summary { font-size: 13px; }
+.home-row-body .home-card-body, .home-mini-list .home-card-body {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.home-card-link { display: none; }
+.home-row { transition: background-color .15s ease; border-radius: var(--r-ctl); padding: 10px 8px; }
+
+/* Requests */
+.big-count { font-size: 30px; opacity: .85; }
+.request-card { margin-bottom: 10px; }
+.history-block > summary { padding: 12px 16px; background: var(--panel); border: 1px solid var(--rule-strong); transition: border-color .15s ease, background-color .15s ease; }
+.history-block > summary:hover { border-color: var(--accent-bright); background: var(--panel-raised); }
+
+/* People */
+.people-layout { background: var(--panel); border: 1px solid var(--rule-strong); }
+.person-row { transition: background-color .15s ease, box-shadow .15s ease; }
+.person-row.is-selected { box-shadow: inset 3px 0 0 var(--accent-bright); }
+.people-layout .person-row { gap: 2px; padding: 11px 14px; }
+.person-impact, .person-met { font-size: 11px; color: var(--faint); }
+.person-role { color: var(--accent-bright); font-size: 12px; }
+
+/* Roles: long descriptions stop at three lines. */
+.role-row-can-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.roles-who-can-field { max-width: 420px; }
+.new-role-form { flex-wrap: nowrap; }
+
+/* Tasks: calm rows, hairlines in the console's own rule colour. */
+.task-row { border: 0; border-top: 1px solid var(--rule); border-radius: 0; transition: background-color .15s ease; }
+.task-row:first-child { border-top: 0; }
+.task-row .mono { color: var(--faint); font-size: 12px; }
+.task-row time { color: var(--faint); font-size: 12px; }
+.participant-list { font-size: 11px; color: var(--faint); }
+
+/* Schedules: last run stops at two lines, actions and history share one row. */
+.schedule-card { padding: 16px 18px; }
+.schedule-head h3 { margin: 0; }
+.schedule-last-run { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.schedule-action-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.schedule-actions { margin-top: 12px; padding-top: 0; border-top: 0; }
+.schedule-action-row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.schedule-action-row .schedule-actions { margin-top: 0; }
+
+/* Group chats */
+.group-row { background: var(--panel); border: 1px solid var(--rule-strong); margin-bottom: 10px; }
+.groups-list { display: grid; gap: 0; }
+.group-row-mode { min-width: 180px; }
+
+/* Health */
+.health-grid { gap: 0; border: 1px solid var(--rule-strong); }
+.health-stat { border-radius: 0; box-shadow: none; }
+.health-columns { gap: 14px; }
+.health-columns > div { padding: 16px 18px; background: var(--panel); border: 1px solid var(--rule-strong); }
+
+/* Settings: label and control are the main thing. The description keeps to one
+   line and the technical name is folded away; both show in the Details view you
+   get by clicking a row. */
+.settings-group > h3, .settings-group > .settings-group-title { margin-top: 18px; }
+.setting-row { padding: 13px 16px; gap: 22px; transition: background-color .15s ease; }
+.setting-help { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.setting-name {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.setting-row { position: relative; }
+.setting-meta { min-height: 0; }
+.toggle-track { border-radius: 999px; transition: background-color .2s ease, border-color .2s ease; }
+.toggle-track span { border-radius: 50%; transition: transform .2s var(--ease); }
+
+/* Phone: same content, tighter, nothing sideways. */
+@media (max-width: 760px) {
+  .section { padding: 16px 14px 32px; }
+  .section-heading h1, .section-heading h2 { font-size: 18px; }
+  .section-heading { gap: 10px; }
+  .home-grid { grid-template-columns: 1fr; grid-template-areas: "stuck" "running" "done" "coming"; }
+  .heading-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .people-layout .heading-actions { width: 100%; }
+  .new-role-form { flex-wrap: wrap; }
+  .group-row-mode { min-width: 0; }
+  .schedule-action-row { align-items: stretch; }
+}
+@media (hover: none) {
+  :is(.schedule-card, .role-row, .request-card):hover, .button:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .section:not([hidden]), dialog[open], dialog::backdrop { animation: none; }
+  :is(.schedule-card, .role-row, .request-card):hover, .button:hover, .button:active { transform: none; }
+}
+.group-row-mode select, .setting-value select, .setting-value textarea, .number-control input[type="number"],
+.schedule-dialog input:not([type=radio]):not([type=checkbox]), .schedule-dialog select, .schedule-dialog textarea,
+.person-editor input, .person-editor select, .person-editor textarea, #person-editor input, #person-editor select { border-radius: var(--r-ctl); }
+.group-row-mode select, .setting-value select { transition: border-color .15s ease, box-shadow .15s ease; }
+.group-row-mode select:hover, .setting-value select:hover { border-color: var(--accent-bright); box-shadow: var(--shadow-1); }
+.setting-source.source-default { display: none; }
+.task-row .state, .history-row .state { justify-self: start; }
+@media (max-width: 760px) {
+  .section-heading { flex-wrap: wrap; align-items: center; }
+  .section-heading > div:first-child { flex: 1 1 auto; text-align: left; }
+  .heading-actions { flex: 1 1 100%; justify-content: flex-start; margin-left: 0; }
+  .heading-actions .search-field { flex: 1 1 100%; }
+  .heading-actions .button { flex: 1 1 0; }
+  .new-role-form { width: 100%; }
+  .new-role-form .new-role-name { flex: 1 1 auto; min-width: 0; }
+}
+.section-heading, .section-heading h1, .section-heading h2 { text-align: left; }
+.new-role-form .button { white-space: nowrap; flex: 0 0 auto; }
+
+/* No yellow boxes. Focus is a soft ring in the console's own blue, drawn only for
+   keyboard focus. Headings and other non-interactive elements that receive focus
+   from script (so screen readers land on the page title) never draw anything. */
+:focus { outline: none; }
+:focus-visible, .role-name-input:focus-visible, .new-role-name:focus-visible,
+.setting-toggle input:focus-visible + .toggle-track,
+:is([data-card-route], [data-request-detail], .schedule-card, .role-row, [data-info-card], .task-row, .person-row, .home-row[data-card-route]):focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(36, 135, 222, .22);
+}
+:focus:not(:focus-visible) { outline: none; }
+h1:focus, h2:focus, h3:focus, main:focus, section:focus, [tabindex="-1"]:focus, [tabindex="-1"]:focus-visible {
+  outline: none !important; box-shadow: none !important;
+}
+.search-field:focus-within { box-shadow: 0 0 0 3px rgba(36, 135, 222, .25); border-color: var(--accent-bright); }
+.search-field input:focus-visible { outline: none; box-shadow: none; }
+/* Highlights that used amber boxes now use the console's blue. */
+.request-card.is-selected { border-color: var(--accent-bright); box-shadow: var(--shadow-2), inset 3px 0 0 var(--accent-bright); }
+.setting-row.is-serious { box-shadow: none; }
+.home-stuck, .home-stuck.is-urgent { border-top-color: var(--accent); box-shadow: var(--shadow-1); }
+.home-stuck.is-urgent .home-needs-count { color: var(--text); background: none; }
+.role-warning, .role-system-send-warning, .role-delete-confirm, .write-mark, .send-mark { border-color: rgba(214, 161, 87, .35); border-radius: var(--r-ctl); }
+
+/* ==========================================================================
+   Calm layer. Same identity (dark navy, one blue accent, the Blatbot avatar and
+   name), refined: hairline borders, a quiet backdrop, one neutral UI sans, near
+   white headings, compact rows, no glow. Appended last so it wins.
+   ========================================================================== */
+:root {
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --display: "Space Grotesk", var(--sans);
+  --rule: rgba(148, 176, 230, .10);
+  --rule-strong: rgba(148, 176, 230, .20);
+  --panel: rgba(7, 10, 26, .94);
+  --panel-raised: rgba(14, 20, 44, .96);
+  --text: #eaf0fb;
+  --muted: #a9b6d3;
+  --faint: #8e9bbb;
+  --shadow-1: 0 1px 2px rgba(0, 0, 8, .5), 0 6px 16px rgba(0, 0, 8, .28);
+  --shadow-2: 0 2px 4px rgba(0, 0, 8, .5), 0 12px 28px rgba(0, 0, 8, .4);
+  --r-panel: 10px;
+  --r-ctl: 8px;
+}
+body { font-size: 14px; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+time, .home-needs-count, .big-count, .nav-count, .setting-value input, .h-count { font-variant-numeric: tabular-nums; }
+.wordmark, .brand-avatar-link .wordmark { font-family: var(--display); font-weight: 700; letter-spacing: .1em; }
+main { text-shadow: none; }
+
+/* Backdrop: the scene stays, but only as a faint, calm wash. */
+body::before {
+  background:
+    linear-gradient(rgba(0, 1, 13, .93), rgba(0, 1, 13, .95)),
+    url("/static/scene.svg") center / cover no-repeat, var(--ink);
+}
+
+/* Type: neutral, normal weights, near-white headings, quiet secondary text. */
+h1, h2, h3, .section-heading h1, .section-heading h2 { color: var(--text); font-weight: 600; letter-spacing: 0; }
+.section { --page-accent: rgba(148, 176, 230, .22); }
+.section-heading { border-bottom: 1px solid var(--rule); }
+.section-heading h1, .section-heading h2 { font-size: 20px; }
+.home-card-head h2, .home-card h2 { font-weight: 600; color: var(--muted); font-size: 13px; text-transform: none; }
+.home-needs-count, .home-stuck.is-urgent .home-needs-count, .big-count { font-weight: 600; color: var(--text); }
+.person-name, .group-row-title, .setting-label, .schedule-head h3, .role-row-title, .role-name-input, strong, b,
+.request-summary, .home-card-body strong { font-weight: 600; }
+.group-row-title, .schedule-head h3 { color: var(--text); }
+.button, .filter, nav a[aria-current="page"], .nav-count, .state, .scope-chip, .key-button, .role-row-toggle,
+.schedule-history-toggle, .settings-group > h3, .role-row-locked-badge, .serious-mark { font-weight: 600; }
+.nav-count { font-size: 11px; }
+.settings-group > h3 { color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; background: none; border: 0; padding-left: 2px; }
+.person-role { color: var(--muted); }
+.person-impact, .person-met, .participant-list, .task-row time, .task-row .mono { color: var(--faint); }
+.health-stat dd { color: var(--text); font-weight: 600; }
+.health-stat dt { color: var(--muted); }
+
+/* Panels: near solid, hairline border, soft shadow. */
+.home-card, .request-card, .schedule-card, .role-row, .group-row, .health-stat, .health-columns > div,
+.settings-panel, .task-list, .people-layout, .request-history, .history-block > summary, .empty-state,
+.who-can-results, .health-grid, dialog, .ledger-dialog, .person-role-group, .editor-pane {
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+}
+.home-card { border-top: 1px solid var(--rule); }
+.home-stuck, .home-stuck.is-urgent { border-top: 1px solid var(--rule); }
+.people-layout { gap: 0; }
+.people-layout .editor-pane { border: 0; border-left: 1px solid var(--rule); box-shadow: none; background: transparent; border-radius: 0; }
+.health-stat, .health-grid .health-stat { border: 0; border-right: 1px solid var(--rule); box-shadow: none; }
+:is(.home-card, .request-card, .schedule-card, .role-row, .group-row, .health-stat, [data-info-card]):hover {
+  border-color: var(--rule-strong); background: var(--panel-raised); box-shadow: var(--shadow-2);
+}
+:is(.schedule-card, .role-row, .request-card):hover { transform: none; }
+.health-stat:hover { box-shadow: none; }
+.request-card.is-selected { border-color: rgba(111, 179, 232, .55); box-shadow: var(--shadow-1); }
+.empty-state { border-left: 1px solid var(--rule); }
+
+/* Controls: flat, quiet, one accent. */
+.button { box-shadow: none; transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out; font-weight: 600; }
+.button:hover, .button:active { transform: none; }
+.button { border-color: var(--rule-strong); background: rgba(148, 176, 230, .06); color: var(--text); }
+.button:hover { background: rgba(148, 176, 230, .12); border-color: rgba(148, 176, 230, .32); box-shadow: none; color: var(--text); }
+.button-quiet { background: transparent; color: var(--muted); }
+.button-primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: none; }
+.button-primary:hover { background: #3a96ea; border-color: #3a96ea; color: #fff; box-shadow: none; }
+.button-approve { color: #04140d; } .button-reject { color: #1a0707; }
+.button-danger { background: transparent; }
+input, select, textarea, .search-field, .new-role-name { border-color: var(--rule-strong); background: rgba(0, 1, 13, .6); }
+.search-field:focus-within { border-color: rgba(111, 179, 232, .6); box-shadow: 0 0 0 3px rgba(36, 135, 222, .18); }
+.filter { border-color: var(--rule); color: var(--muted); }
+.filter.is-active { background: rgba(36, 135, 222, .16); border-color: rgba(111, 179, 232, .5); color: var(--text); }
+a { text-decoration-color: rgba(148, 176, 230, .4); }
+.page-back, .home-card-link, .schedule-history-toggle, .settings-scopes-link a { color: var(--accent-bright); }
+.schedule-history-toggle { text-decoration: none; }
+.schedule-history-toggle:hover { color: #fff; }
+
+/* Sidebar: no dividers, spacing and a quiet active state. */
+@media (min-width: 761px) {
+  .topbar { background: rgba(3, 4, 17, .96); border-right: 1px solid var(--rule); }
+  nav { border-top: 0; padding: 4px 10px; gap: 2px; }
+  nav a { border: 0; border-radius: var(--r-ctl); margin: 0; padding: 9px 12px; font-size: 14px; color: var(--muted); }
+  nav a:hover { padding-left: 12px; background: rgba(148, 176, 230, .07); color: var(--text); }
+  nav a[aria-current="page"] { background: rgba(36, 135, 222, .14); color: var(--text); box-shadow: none; font-weight: 600; }
+  .connection { border-top: 0; background: none; border: 0; padding: 14px 18px 0; }
+  .brand-avatar { box-shadow: none; border-color: var(--rule-strong); }
+}
+nav a { border-right: 0; }
+.connection { border-color: var(--rule); }
+.brand-avatar { box-shadow: none; }
+
+/* Pills: restrained fills, readable text. */
+.state-pending, .state-open { color: #e0b878; background: rgba(214, 161, 87, .10); border-color: rgba(214, 161, 87, .30); }
+.state-running, .state-active { color: #a9cdf0; background: rgba(36, 135, 222, .12); border-color: rgba(111, 179, 232, .32); }
+.state-done, .state-finished, .state-complete { color: #86c9ae; background: rgba(79, 158, 130, .12); border-color: rgba(79, 158, 130, .32); }
+.state-failed, .state-stopped { color: #e29a9a; background: rgba(207, 104, 104, .12); border-color: rgba(207, 104, 104, .32); }
+.state-neutral, .state-ended, .state-paused, .setting-source { color: var(--muted); background: rgba(148, 176, 230, .07); border-color: var(--rule); }
+.schedule-outcome-failed { color: #e29a9a; background: rgba(207, 104, 104, .12); border-color: rgba(207, 104, 104, .32); }
+.schedule-outcome-pending { color: #e0b878; background: rgba(214, 161, 87, .10); border-color: rgba(214, 161, 87, .30); }
+.scope-chip, .schedule-capability-chip { background: rgba(148, 176, 230, .07); border-color: var(--rule); color: var(--muted); font-weight: 500; }
+.person-role-chip, .person-role-chip-locked, .role-locked-badge, .role-row-locked-badge { background: rgba(148, 176, 230, .08); border-color: var(--rule); color: var(--muted); }
+.state { font-size: 11px; }
+.health-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; background: none; border: 0; padding: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.health-where { background: none; color: var(--text); font-weight: 500; }
+.connection { background: rgba(148, 176, 230, .06); }
+.stream-dot.is-live { box-shadow: none; }
+
+/* Compact rows. */
+.people-layout .person-row {
+  grid-template-columns: 1fr auto; grid-template-areas: "name impact" "role role";
+  gap: 1px 12px; padding: 10px 14px; align-items: baseline; border-bottom: 1px solid var(--rule);
+}
+.people-layout .person-name { grid-area: name; font: 600 14px var(--sans); }
+.people-layout .person-impact { grid-area: impact; font: 12px var(--sans); }
+.people-layout .person-role { grid-area: role; font: 12px var(--sans); color: var(--muted); }
+.people-layout .person-row.is-selected { background: rgba(36, 135, 222, .12); box-shadow: inset 2px 0 0 var(--accent); }
+.people-layout .person-row:hover { background: rgba(148, 176, 230, .06); }
+.pane-label { color: var(--faint); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.task-row { min-height: 42px; padding: 8px 16px; font-size: 13px; }
+.task-row:hover, .history-row:hover { background: rgba(148, 176, 230, .06); }
+.history-row { border-top: 1px solid var(--rule); }
+.setting-row { border-bottom: 1px solid var(--rule); }
+.setting-row:hover { background: rgba(148, 176, 230, .04); border-color: var(--rule); }
+.home-row { border-top: 1px solid var(--rule); }
+.home-row[data-card-route]:hover { background: rgba(148, 176, 230, .06); }
+.schedule-action-row { border-top: 1px solid var(--rule); }
+.schedule-card h3 { font-size: 15px; }
+.role-row-toggle, .schedule-history-toggle { border-color: var(--rule); color: var(--muted); }
+.role-row-toggle:hover { color: var(--text); border-color: var(--rule-strong); }
+.toggle-track { background: rgba(148, 176, 230, .10); border-color: var(--rule-strong); }
+.setting-toggle input:checked + .toggle-track { background: rgba(36, 135, 222, .35); border-color: var(--accent); }
+.setting-toggle input:checked + .toggle-track span { background: #fff; }
+input[type="range"] { accent-color: var(--accent); }
+dialog { box-shadow: var(--shadow-2); border-color: var(--rule-strong); }
+dialog::backdrop { background: rgba(0, 1, 13, .72); }
+.key-button { border-color: var(--rule-strong); color: var(--muted); }
+.key-button:hover { background: rgba(148, 176, 230, .1); color: var(--text); }
+.h-label { font-weight: 500; }
+.scope-detail-kind { font-weight: 600; }
+@media (max-width: 760px) {
+  .topbar { background: rgba(3, 4, 17, .96); border-bottom: 1px solid var(--rule); }
+  .mobile-nav select { border-color: var(--rule-strong); background: rgba(0, 1, 13, .6); }
+}
+.home-mini-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.home-mini-list li { align-items: center; }
+@media (max-width: 760px) {
+  .section-heading { justify-content: flex-start; }
+  .section-heading > div:only-child { width: 100%; }
+  .home-mini-list li, .home-mini-list li:has(.state) { grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; }
+  .home-mini-list li > .muted { grid-column: 1 / -1; font-size: 12px; }
+}
+@media (max-width: 760px) {
+  .section-heading > div:first-child:not(:only-child) { flex: 1 1 100%; text-align: left; }
+  .section-heading > div:first-child > h1, .section-heading > div:first-child > h2 { text-align: left; margin-left: 0; margin-right: auto; }
+}
+@media (max-width: 760px) {
+  .section-heading { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 10px; }
+  .section-heading > div:first-child:not(:only-child), .section-heading > div:only-child { flex: 0 0 auto; width: 100%; }
+  .heading-actions { flex: 0 0 auto; width: 100%; justify-content: flex-start; }
+}

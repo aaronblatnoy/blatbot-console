@@ -1052,7 +1052,7 @@ function renderHealth() {
   const tunnelUp = tunnel === 'up' || tunnel === true || (tunnel && tunnel.connected === true);
   const tunnelWhere = tunnel && typeof tunnel === 'object' ? (tunnel.url || tunnel.mode || '') : '';
   $('#health-content').innerHTML = `<dl class="health-grid">
-    <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Tunnel</dt><dd class="state-${tunnelUp ? 'done' : 'failed'}">${tunnelUp ? 'up' : 'down'}${tunnelWhere ? `<span class="muted"> ${escapeHTML(tunnelWhere)}</span>` : ''}</dd></div>
+    <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Tunnel</dt><dd class="health-status"><span class="state state-${tunnelUp ? 'done' : 'failed'}">${tunnelUp ? 'up' : 'down'}</span>${tunnelWhere ? `<span class="health-where">${escapeHTML(tunnelWhere)}</span>` : ''}</dd></div>
     <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Uptime</dt><dd>${escapeHTML(formatDuration(state.health.uptime_s ?? state.health.uptime_seconds))}</dd></div>
     <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Last restart</dt><dd>${escapeHTML(formatTime(state.health.last_restart))}</dd></div>
   </dl>
