@@ -474,3 +474,6 @@ body { background:
 .schedule-last-run dd { align-items: center; }
 .schedule-last-run-time { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(135,144,181,.12); color: var(--text-2); }
 .schedule-cadence { color: var(--text-2); }
+
+/* Page titles take focus after navigation so screen readers follow, but the title text never shows a box. */
+.page-bar h1, .page-bar h1:focus, .page-bar h1:focus-visible { outline: none !important; border: 0; box-shadow: none; background: none; }
