@@ -663,3 +663,22 @@ kbd { display: inline-flex; min-width: 22px; height: 22px; padding: 0 6px; align
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Notes and memory: who reaches Aaron's notes and Blatbot's memory */
+.role-knowledge-line { margin: 8px 0 0 38px; }
+@media (max-width: 640px) { .role-knowledge-line { margin-left: 0; } }
+.role-knowledge-line .pill .ic, .knowledge-person .pill .ic, .memory-access .pill .ic { width: 12px; height: 12px; margin-right: 5px; vertical-align: -1px; }
+.role-knowledge-extra { color: var(--text-2); font-size: 12.5px; margin: 4px 0 0; }
+.knowledge-rules { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; padding: 14px 18px; }
+.knowledge-rule { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--panel-raised, rgba(255,255,255,.03)); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.knowledge-rule-title { font-weight: 600; font-size: 12.5px; color: var(--text); }
+.knowledge-rule-text { font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
+.knowledge-person .row-meta { flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+.knowledge-access .lane-more { padding: 8px 18px 14px; }
+.access-part .row-main { gap: 4px; }
+.access-part .tag-line { margin-top: 4px; }
+@media (max-width: 640px) {
+  .knowledge-person { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .knowledge-person .row-meta { max-width: 100%; justify-content: flex-start; }
+  .knowledge-rules { grid-template-columns: 1fr; }
+}
