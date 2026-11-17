@@ -96,7 +96,7 @@ function formatTime(value) {
   const number = Number(value);
   const date = new Date(Number.isFinite(number) && number > 0 && number < 1e12 ? number * 1000 : value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
 function formatDuration(seconds) {
@@ -120,6 +120,38 @@ function showNotice(message, type = 'info', timeout = 5000) {
 function setStarting(isStarting, detail = '') {
   $('#startup-banner').hidden = !isStarting;
   if (detail) $('#startup-detail').textContent = detail;
+}
+
+// Plain words for the states the backend stores as code names.
+const STATE_WORDS = {
+  pending: 'Waiting on you', waiting_aaron: 'Waiting on you', running: 'Running', done: 'Done',
+  failed: 'Failed', open: 'Open', approved: 'Approved', rejected: 'Declined', closed: 'Closed',
+  interrupted: 'Interrupted', queued: 'Queued', sending: 'Sending', sent: 'Sent', held: 'Held',
+  fired: 'Fired', cancelled: 'Cancelled',
+};
+const STATE_CLASS = { waiting_aaron: 'pending', open: 'neutral', approved: 'running', rejected: 'neutral', closed: 'neutral',
+  queued: 'running', sending: 'running', sent: 'done', held: 'pending', fired: 'done', cancelled: 'neutral' };
+function stateWord(value) { return STATE_WORDS[value] || String(value || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()); }
+function statePill(value) {
+  return `<span class="state state-${escapeHTML(STATE_CLASS[value] || value || 'neutral')}">${escapeHTML(stateWord(value))}</span>`;
+}
+const SURFACE_WORDS = { telegram: 'Telegram', imessage: 'iMessage', sms: 'Text', text: 'Text', email: 'Email', voice: 'Phone', web: 'Web', schedule: 'Schedule', timer: 'Timer', console: 'Console', a2a: 'Agent' };
+function surfaceWord(value) { return SURFACE_WORDS[String(value || '').toLowerCase()] || (value ? String(value) : ''); }
+
+// Group messages are stored with a routing note in front ("[telegram group: X | from: Y |
+// your reply goes to ...]") and runs sometimes start with "STATUS: OK". Neither is for a person
+// to read: show the message itself, and the group as its own label.
+function cleanText(value) {
+  let text = String(value || '');
+  let group = '';
+  const m = text.match(/^\s*\[telegram group:\s*([^|\]]+)(?:\|[^\]]*)?\]\s*/i);
+  if (m) { group = m[1].trim(); text = text.slice(m[0].length); }
+  text = text.replace(/^((?:[^:\n]{1,60}):\s*)?STATUS:\s*(OK|DONE|STOP|INCOMPLETE|FAILED)\b[\s.:]*/i, '$1');
+  return { text: text.trim(), group };
+}
+const clean = value => cleanText(value).text;
+function uniqueNames(list = []) {
+  return [...new Set(list.map(person => typeof person === 'string' ? person : (person.display || person.key || '')).filter(Boolean))];
 }
 
 function scopeChips(scopes = []) {
@@ -283,7 +315,7 @@ function homeStuckBlock() {
       ? '<p class="home-card-body muted">Nothing is stuck.</p>'
       : `<ul class="home-mini-list">${rows.map(row => `<li class="home-row" data-card-route="${row.kind === 'schedule' ? 'schedules' : 'requests'}" role="link" tabindex="0">
           <div class="home-row-body">
-            <p class="home-card-body">${escapeHTML(row.sentence)}</p>
+            <p class="home-card-body">${escapeHTML(clean(row.sentence))}</p>
             ${row.since_text ? `<span class="muted">${escapeHTML(row.since_text)}</span>` : ''}
           </div>
           <div class="home-row-actions">${homeActionButtons(row.actions)}</div>
@@ -297,8 +329,8 @@ function homeRunningBlock() {
     <div class="home-card-head"><h2 id="home-running-title">Running</h2><span class="home-needs-count">${rows.length}</span></div>
     ${rows.length
       ? `<ul class="home-mini-list">${rows.map(row => `<li>
-          <span class="state state-running">running</span>
-          <span class="home-mini-summary">${escapeHTML(row.sentence)}${row.latest_step ? ` &middot; ${escapeHTML(row.latest_step)}` : ''}</span>
+          <span class="state state-running">Running</span>
+          <span class="home-mini-summary">${escapeHTML(clean(row.sentence))}${row.latest_step ? ` &middot; ${escapeHTML(row.latest_step)}` : ''}</span>
           <span class="muted">${escapeHTML(row.started_text || '')}</span>
         </li>`).join('')}</ul>`
       : '<p class="home-card-body muted">Nothing is running.</p>'}
@@ -312,7 +344,7 @@ function homeDoneTodayBlock() {
     ${rows.length
       ? `<ul class="home-mini-list">${rows.map(row => `<li>
           <span class="state state-${HOME_OUTCOME_STATE[row.outcome] || 'neutral'}">${escapeHTML(HOME_OUTCOME_WORD[row.outcome] || row.outcome)}</span>
-          <span class="home-mini-summary">${escapeHTML(row.sentence)}</span>
+          <span class="home-mini-summary">${escapeHTML(clean(row.sentence))}</span>
           <span class="muted">${escapeHTML(row.time_text || '')}</span>
         </li>`).join('')}</ul>`
       : '<p class="home-card-body muted">Nothing finished today yet.</p>'}
@@ -326,7 +358,7 @@ function homeComingUpBlock() {
     ${rows.length
       ? `<ul class="home-mini-list">${rows.map(s => `<li><span class="home-mini-summary"><strong>${escapeHTML(s.title)}</strong> &middot; ${escapeHTML(s.cadence_text)}</span><span class="muted">${escapeHTML(s.next_run_text || '')}</span></li>`).join('')}</ul>`
       : '<p class="home-card-body muted">No scheduled runs are coming up.</p>'}
-    <a class="home-card-link" href="${VIEW_PATHS.schedules}" data-home-link="schedules">See schedules →</a>
+    <a class="home-card-link" href="${VIEW_PATHS.schedules}" data-home-link="schedules">See schedules</a>
   </article>`;
 }
 
@@ -386,36 +418,42 @@ function renderRequests() {
     ? waiting.map((request, index) => requestCard(request, index)).join('')
     : '<div class="waiting-empty"><strong>Nothing waiting.</strong>New requests will appear here as they arrive.</div>';
 
-  const counts = ['running', 'done', 'failed'].map(name => `${state.requests.filter(r => r.state === name).length} ${name}`).join(' / ');
+  const counts = ['running', 'done', 'failed'].map(name => {
+    const n = state.requests.filter(r => r.state === name).length;
+    return `${n}${n >= 100 ? '+' : ''} ${stateWord(name).toLowerCase()}`;
+  }).join(', ');
   $('#history-counts').textContent = counts;
   const history = state.requests.filter(request => request.state !== 'pending' && (state.requestFilter === 'all' || request.state === state.requestFilter));
   $('#request-history').innerHTML = history.length ? history.map(historyRow).join('') : '<div class="empty-state">No requests in this state.</div>';
 }
 
 function requestCard(request, index) {
+  const message = cleanText(request.original_message);
+  const summary = clean(request.summary) || message.text || 'No summary';
+  const where = [surfaceWord(request.surface), message.group].filter(Boolean).join(' in ');
   return `<article class="request-card${index === state.selectedWaiting ? ' is-selected' : ''}" data-request-id="${escapeHTML(request.id)}" data-waiting-index="${index}" data-request-detail="${escapeHTML(request.id)}" role="button" tabindex="0" aria-label="Waiting request from ${escapeHTML(request.sender_name || request.sender)}">
     <div class="request-main">
       <div class="request-who">
         <div class="sender">${escapeHTML(request.sender_name || request.sender || 'Unknown sender')}</div>
-        <div class="surface">${escapeHTML(request.surface || 'unknown surface')}</div>
-        <div class="request-id">${escapeHTML(request.id)}</div>
+        <div class="surface">${escapeHTML(where || 'Unknown surface')}</div>
+        <div class="request-id">#${escapeHTML(request.id)}</div>
       </div>
       <div>
-        <p class="request-summary">${escapeHTML(request.summary || 'No summary')}</p>
-        <div class="scope-line">${scopeChips(request.scopes)}</div>
+        <p class="request-summary">${escapeHTML(summary)}</p>
+        <div class="scope-line">${request.scopes?.length ? scopeChips(request.scopes) : ''}</div>
       </div>
       <div class="request-actions">
         <button class="button button-approve" type="button" data-decision="yes">Approve</button>
-        <button class="button button-reject" type="button" data-decision="no">Reject</button>
+        <button class="button button-reject" type="button" data-decision="no">Decline</button>
         <button class="button button-quiet" type="button" data-show-edit>Edit</button>
       </div>
     </div>
-    <details class="original-message" open>
-      <summary>Original message · ${escapeHTML(formatTime(request.created_at))}</summary>
-      <blockquote>${escapeHTML(request.original_message || 'No original message recorded.')}</blockquote>
+    <details class="original-message">
+      <summary>What they wrote, ${escapeHTML(formatTime(request.created_at))}</summary>
+      <blockquote>${escapeHTML(message.text || 'No message recorded.')}</blockquote>
     </details>
     <div class="decision-note" hidden>
-      <textarea aria-label="Edited instruction" placeholder="Required: enter the edited instruction"></textarea>
+      <textarea aria-label="Edited instruction" placeholder="What it should do instead"></textarea>
       <button class="button button-primary" type="button" data-decision="edit">Run edit</button>
     </div>
   </article>`;
@@ -423,9 +461,9 @@ function requestCard(request, index) {
 
 function historyRow(request) {
   return `<div class="history-row" data-request-detail="${escapeHTML(request.id)}" role="button" tabindex="0">
-    <span class="state state-${escapeHTML(request.state)}">${escapeHTML(request.state)}</span>
+    ${statePill(request.state)}
     <span>${escapeHTML(request.sender_name || request.sender || 'Unknown')}</span>
-    <span class="summary">${escapeHTML(request.summary || request.original_message || 'No summary')}</span>
+    <span class="summary">${escapeHTML(clean(request.summary) || clean(request.original_message) || 'No summary')}</span>
     <time datetime="${escapeHTML(request.created_at || '')}">${escapeHTML(formatTime(request.created_at))}</time>
   </div>`;
 }
@@ -988,12 +1026,11 @@ function setFormBusy(form, busy) {
 function renderTasks() {
   $('#tasks-list').setAttribute('aria-busy', 'false');
   $('#tasks-list').innerHTML = state.tasks.length ? state.tasks.map(task => `<button class="task-row" type="button" data-task-id="${escapeHTML(task.id)}">
-    <span class="mono">${escapeHTML(task.id)}</span>
-    <span class="summary">${escapeHTML(task.title || 'Untitled task')}</span>
-    <span class="state state-${escapeHTML(task.state)}">${escapeHTML(task.state)}</span>
+    <span class="mono task-id">T${escapeHTML(task.id)}</span>
+    <span class="summary">${escapeHTML(clean(task.title) || 'Untitled task')}${cleanText(task.title).group ? `<span class="where-chip">${escapeHTML(cleanText(task.title).group)}</span>` : ''}</span>
+    ${statePill(task.state)}
     <time datetime="${escapeHTML(task.updated_at || '')}">${escapeHTML(formatTime(task.updated_at))}</time>
-    <span class="participant-list">${escapeHTML((task.participants || []).map(person =>
-      typeof person === 'string' ? person : (person.display || person.key || '')).filter(Boolean).join(', '))}</span>
+    <span class="participant-list">${escapeHTML(uniqueNames(task.participants || []).join(', '))}</span>
   </button>`).join('') : '<div class="empty-state">No recent tasks.</div>';
 }
 
@@ -1007,9 +1044,9 @@ function renderLedger(task) {
     const when = event.created_at ? new Date(event.created_at * 1000).toISOString() : '';
     return `<article class="ledger-entry">
       <header class="ledger-meta">
-        <span class="ledger-kind ledger-kind-${escapeHTML(event.kind || 'note')}">${escapeHTML(event.kind || 'note')}</span>
+        <span class="ledger-kind ledger-kind-${escapeHTML(event.kind || 'note')}">${escapeHTML(stateWord(event.kind || 'note'))}</span>
         <time datetime="${escapeHTML(when)}">${escapeHTML(formatTime(event.created_at))}</time>
-        ${event.request_id ? `<span class="mono">request #${escapeHTML(event.request_id)}</span>` : ''}
+        ${event.request_id ? `<span class="mono">#${escapeHTML(event.request_id)}</span>` : ''}
       </header>
       <div class="ledger-text">${escapeHTML(event.text || '')}</div>
     </article>`;
@@ -1052,7 +1089,7 @@ function renderHealth() {
   const tunnelUp = tunnel === 'up' || tunnel === true || (tunnel && tunnel.connected === true);
   const tunnelWhere = tunnel && typeof tunnel === 'object' ? (tunnel.url || tunnel.mode || '') : '';
   $('#health-content').innerHTML = `<dl class="health-grid">
-    <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Tunnel</dt><dd class="health-status"><span class="state state-${tunnelUp ? 'done' : 'failed'}">${tunnelUp ? 'up' : 'down'}</span>${tunnelWhere ? `<span class="health-where">${escapeHTML(tunnelWhere)}</span>` : ''}</dd></div>
+    <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Tunnel</dt><dd class="health-status"><span class="state state-${tunnelUp ? 'done' : 'failed'}">${tunnelUp ? 'Up' : 'Down'}</span>${tunnelWhere ? `<span class="health-where">${escapeHTML(tunnelWhere)}</span>` : ''}</dd></div>
     <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Uptime</dt><dd>${escapeHTML(formatDuration(state.health.uptime_s ?? state.health.uptime_seconds))}</dd></div>
     <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Last restart</dt><dd>${escapeHTML(formatTime(state.health.last_restart))}</dd></div>
   </dl>
