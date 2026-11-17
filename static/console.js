@@ -1833,7 +1833,7 @@ function openScheduleEditor(schedule = null) {
   renderCadenceOptions(schedule?.cadence_kind || state.scheduleKinds[0]?.kind || 'once');
   const form = $('#schedule-form');
   fillCadenceFields(form, schedule?.cadence_kind, schedule?.cadence);
-  $('#schedule-report-options').innerHTML = `<label>Report<select name="report_every_time">${state.reportOptions.map((opt, index) => `<option value="${escapeHTML(opt.value)}" ${(schedule ? String(schedule.report_every_time) === String(opt.value) : index === 0) ? 'selected' : ''}>${escapeHTML(opt.label)}</option>`).join('')}</select></label>`;
+  $('#schedule-report-options').innerHTML = `<label>Report<select name="report_every_time">${state.reportOptions.map((opt, index) => `<option value="${escapeHTML(opt.value)}" ${(schedule ? String(schedule.report_every_time) === String(opt.value) : index === 0) ? 'selected' : ''}>${escapeHTML(schedule && String(schedule.report_every_time) === String(opt.value) && schedule.report_text ? schedule.report_text : opt.label)}</option>`).join('')}</select></label>`;
   $('#schedule-until').value = schedule?.until ? new Date(Number(schedule.until) * 1000).toISOString().slice(0, 10) : '';
   const selected = new Set((schedule?.capabilities || []).map(c => c.scope));
   $('#schedule-scopes').innerHTML = state.capabilityOptions.map(opt => `<label class="scope-option" title="${escapeHTML((opt.tools || []).join(', '))}"><input type="checkbox" name="capabilities" value="${escapeHTML(opt.scope)}" ${selected.has(opt.scope) ? 'checked' : ''}><span class="capability-label">${escapeHTML(opt.label)}</span></label>`).join('');
