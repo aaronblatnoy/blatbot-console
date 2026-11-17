@@ -367,8 +367,8 @@ async function refreshLoopData() {
 
 // Overview wording comes from the API; legacy missing reasons are resolved
 // from the schedule last run above. Labels and empty states are UI chrome.
-const HOME_OUTCOME_STATE = { finished: 'done', could_not_finish: 'pending', failed: 'failed' };
-const HOME_OUTCOME_WORD = { finished: 'Finished', could_not_finish: 'Could not finish', failed: 'Failed' };
+const HOME_OUTCOME_STATE = { finished: 'done', could_not_finish: 'pending', declined: 'neutral', failed: 'failed' };
+const HOME_OUTCOME_WORD = { finished: 'Finished', could_not_finish: 'Could not finish', declined: 'Declined', failed: 'Failed' };
 
 function homeActionButtons(actions) {
   return (actions || [])
@@ -470,6 +470,8 @@ async function homeAction(action) {
       await post('/requests/decide', { id: target.id, decision: target.decision });
     } else if (target.endpoint === 'requests/retry') {
       result = await post('/requests/retry', { id: target.id });
+    } else if (target.endpoint === 'requests/dismiss') {
+      result = await post('/requests/dismiss', { id: target.id });
     } else if (target.endpoint === 'schedules/approve') {
       await post('/schedules/approve', { id: target.id, approve: target.approve });
     } else if (target.endpoint === 'schedules/action') {
