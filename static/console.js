@@ -1173,6 +1173,16 @@ function outboxRowHTML(row) {
   </li>`;
 }
 
+// A schedule is a follow-up (the article's sense: a run checks back until something
+// happens) when it was stored with a stop condition. Decided from the stored cadence,
+// never from the title.
+function isFollowupSchedule(schedule) { return Boolean(schedule?.cadence?.stop_when); }
+function timerCounts() {
+  const active = (state.schedules || []).filter(sch => sch.state === 'active');
+  const followSchedules = active.filter(isFollowupSchedule).length;
+  return { followups: (state.followups?.pending || 0) + followSchedules, schedules: active.length - followSchedules };
+}
+
 function followupRowHTML(row) {
   return `<li class="msg-row">
     ${statePill(row.status)}
@@ -1247,19 +1257,19 @@ function renderFollowups() {
   const host = $('#followups-content');
   if (!host) return;
   const timers = state.followups?.rows || [];
-  const pending = state.followups?.pending ?? 0;
-  $('#followups-badge').textContent = pending; $('#followups-badge').className = `badge${pending ? ' tone-running' : ''}`;
-  host.innerHTML = state.followups && !state.followups.available ? '<p class="empty-line">Follow-up timers are off on this server.</p>'
-    : timers.length ? `<ul class="msg-list">${timers.slice(0, 30).map(followupRowHTML).join('')}</ul>` : '<p class="empty-line">No follow-ups set.</p>';
+  const followSchedules = (state.schedules || []).some(isFollowupSchedule);
+  host.innerHTML = state.followups && !state.followups.available && !followSchedules ? '<p class="empty-line">Follow-up timers are off on this server.</p>'
+    : timers.length ? `<ul class="msg-list">${timers.slice(0, 30).map(followupRowHTML).join('')}</ul>` : followSchedules ? '' : '<p class="empty-line">No follow-ups set.</p>';
   updateTimersBadge();
 }
 
 function updateTimersBadge() {
   const badge = $('#timers-badge');
   if (!badge) return;
-  const active = (state.schedules || []).filter(sch => sch.state === 'active').length;
-  badge.textContent = active + (state.followups?.pending || 0);
-  const sb = $('#schedules-badge'); if (sb) sb.textContent = (state.schedules || []).length;
+  const { followups, schedules } = timerCounts();
+  badge.textContent = followups + schedules;
+  const fb = $('#followups-badge'); if (fb) { fb.textContent = followups; fb.className = `badge${followups ? ' tone-running' : ''}`; }
+  const sb = $('#schedules-badge'); if (sb) sb.textContent = (state.schedules || []).filter(sch => !isFollowupSchedule(sch)).length;
 }
 
 function renderMessages() {
@@ -1565,11 +1575,23 @@ function scheduleHistoryBlock(schedule) {
 function renderSchedules() {
   const host = $('#schedules-list');
   host.setAttribute('aria-busy', 'false');
-  host.innerHTML = state.schedules.length ? state.schedules.map(schedule => `<article class="schedule-card panel" data-schedule-id="${escapeHTML(schedule.id)}">
+  const plain = state.schedules.filter(schedule => !isFollowupSchedule(schedule));
+  const follow = state.schedules.filter(isFollowupSchedule);
+  const followHost = $('#followup-schedules');
+  if (followHost) followHost.innerHTML = follow.map(scheduleCardHTML).join('');
+  host.innerHTML = plain.length ? plain.map(scheduleCardHTML).join('') : '<div class="panel"><p class="empty-line">No schedules yet.</p></div>';
+  tickScheduleClocks();
+  updateTimersBadge();
+  renderFollowups();
+}
+
+function scheduleCardHTML(schedule) {
+  return `<article class="schedule-card panel" data-schedule-id="${escapeHTML(schedule.id)}">
     <div class="schedule-head">
       <div><h3>${escapeHTML(schedule.title)}</h3></div>
-      <span class="state state-${stateClassForSchedule(schedule)}">${escapeHTML(schedule.state_label)}</span>
+      ${isFollowupSchedule(schedule) ? '<span class="pill tone-accent">Follow-up</span>' : ''}<span class="state state-${stateClassForSchedule(schedule)}">${escapeHTML(schedule.state_label)}</span>
     </div>
+    ${isFollowupSchedule(schedule) ? `<p class="schedule-stop">Stops when: ${escapeHTML(schedule.cadence.stop_when)}</p>` : ''}
     <p class="schedule-cadence">${escapeHTML(sentenceCase(schedule.cadence_text))}${schedule.next_run_text ? ` &middot; <span data-next-run-text>${escapeHTML(schedule.next_run_text)}</span> <span class="muted" data-next-run-rel="${escapeHTML(schedule.next_run_in_seconds ?? '')}" data-next-run-fetched="${Date.now()}"></span>` : ''}</p>
     ${scheduleLastRunBlock(schedule)}
     ${scheduleMissingBlock(schedule)}
@@ -1580,9 +1602,7 @@ function renderSchedules() {
       <button class="button button-quiet button-small schedule-history-toggle" type="button" data-schedule-history="${escapeHTML(schedule.id)}" aria-expanded="${state.scheduleHistoryOpen.has(schedule.id)}">${state.scheduleHistoryOpen.has(schedule.id) ? 'Hide history' : 'Run history'}</button>
     </div>
     <div class="schedule-history-panel" data-schedule-history-panel="${escapeHTML(schedule.id)}">${state.scheduleHistoryOpen.has(schedule.id) ? scheduleHistoryBlock(schedule) : ''}</div>
-  </article>`).join('') : '<div class="panel"><p class="empty-line">No schedules yet.</p></div>';
-  tickScheduleClocks();
-  updateTimersBadge();
+  </article>`;
 }
 
 // Updates only the relative "in 3 h 20 m" text on a timer, without re-rendering the
@@ -2583,8 +2603,7 @@ function loopModel() {
   const inbox = state.health?.inbox || state.inbox?.counts || {};
   const outbox = state.health?.outbox || state.outbox?.counts || {};
   const counts = state.overview?.counts || {};
-  const schedulesActive = (state.schedules || []).filter(s => s.state === 'active').length;
-  const followups = state.followups?.pending || 0;
+  const { followups, schedules: schedulesActive } = timerCounts();
   const mem = state.memory;
   const msgTotal = mem ? Object.values(mem.messages?.by_kind || {}).reduce((a, b) => a + b, 0) : null;
   const waiting = pendingRequests().length;
@@ -2633,17 +2652,18 @@ function loopHTML() {
     ['e-timers', 'M244 102 C 300 102 290 220 344 220', ['Due timers'], 286, 182, true, 'end'],
     ['e-people', 'M244 378 C 300 378 290 262 344 262', ['Replies arrive', 'as events'], 288, 284, true, 'end'],
     ['e-inbox', 'M568 240 H 668', ['Starts a run'], 618, 230, true],
-    ['e-memory', 'M792 126 V 156', ['Reads and writes back'], 802, 145, false, 'start'],
-    ['e-perm', 'M792 324 V 354', ['Acts within'], 802, 343, false, 'start'],
+    ['e-settimer', 'M668 184 H 628 Q 612 184 612 168 V 70 Q 612 54 596 54 H 244', ['Sets follow-ups', 'and timers'], 428, 30, true],
+    ['e-memory', 'M792 118 V 160', ['Reads and writes back'], 804, 143, false, 'start'],
+    ['e-perm', 'M792 320 V 362', ['Acts within'], 804, 345, false, 'start'],
     ['e-outbox', 'M916 240 H 1012', ['Sends, stays', 'quiet or defers'], 964, 216, true],
     ['e-deliver', 'M1118 304 V 486 Q 1118 504 1100 504 H 150 Q 132 504 132 486 V 440', ['Delivers outcomes'], 560, 496, true],
   ];
-  const edgeSVG = edges.map(([id, d, label, lx, ly, hot, anchor = 'middle']) => `<path id="${id}" class="edge${hot ? ' is-hot' : ' dashed'}" d="${d}" marker-end="url(#arrow)"${id === 'e-memory' ? ' marker-start="url(#arrowStart)"' : ''}/>
+  const edgeSVG = edges.map(([id, d, label, lx, ly, hot, anchor = 'middle']) => `<path id="${id}" class="edge${hot ? ' is-hot' : ' is-quiet'}" d="${d}" marker-end="url(#arrow)"${id === 'e-memory' ? ' marker-start="url(#arrowStart)"' : ''}/>
     <text class="edge-label" x="${lx}" y="${ly}" text-anchor="${anchor}">${label.map((line, k) => `<tspan x="${lx}" dy="${k ? 14 : 0}">${escapeHTML(line)}</tspan>`).join('')}</text>
-    ${hot && !reduced ? `<circle class="dot" r="3.2"><animateMotion dur="${id === 'e-deliver' ? 6 : 2.8}s" repeatCount="indefinite"><mpath href="#${id}"/></animateMotion></circle>` : ''}`).join('');
+    ${hot && !reduced ? `<circle class="dot" r="3.2"><animateMotion dur="${id === 'e-deliver' ? 6 : id === 'e-settimer' ? 4.2 : 2.8}s" repeatCount="indefinite"><mpath href="#${id}"/></animateMotion></circle>` : ''}`).join('');
   const svg = `<svg class="loop-svg" viewBox="0 0 1240 520" role="group" aria-label="How everything fits together">
     <defs>
-      <linearGradient id="flowGrad" x1="0" x2="1"><stop offset="0" stop-color="#8f7cff"/><stop offset="1" stop-color="#45d6c4"/></linearGradient>
+      <linearGradient id="flowGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1240" y2="0"><stop offset="0" stop-color="#8f7cff"/><stop offset="1" stop-color="#45d6c4"/></linearGradient>
       <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6f7bc0"/></marker>
       <marker id="arrowStart" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6f7bc0"/></marker>
     </defs>
@@ -2651,9 +2671,9 @@ function loopHTML() {
     ${loopNodeSVG(m.timers, 20, 40, 224, 124)}
     ${loopNodeSVG(m.people, 20, 316, 224, 124)}
     ${loopNodeSVG(m.inbox, 344, 176, 224, 128)}
-    ${loopNodeSVG(m.memory, 668, 8, 248, 118)}
-    ${loopNodeSVG(m.run, 668, 156, 248, 168)}
-    ${loopNodeSVG(m.permissions, 668, 354, 248, 118)}
+    ${loopNodeSVG(m.memory, 668, 0, 248, 118)}
+    ${loopNodeSVG(m.run, 668, 160, 248, 160)}
+    ${loopNodeSVG(m.permissions, 668, 362, 248, 118)}
     ${loopNodeSVG(m.outbox, 1012, 176, 212, 128)}
   </svg>`;
   const step = (node, link = true) => `<a class="loop-step${node.core ? ' is-core' : ''}" href="${VIEW_PATHS[node.route]}" data-route="${node.route}">
@@ -2661,7 +2681,8 @@ function loopHTML() {
       <span><span class="loop-step-title">${escapeHTML(node.title)}</span><span class="loop-step-sub">${node.chips.map(([t, tone]) => `<span class="pill${tone ? ` tone-${tone}` : ''}">${escapeHTML(t)}</span>`).join('')}</span></span>
       <span class="loop-step-num">${escapeHTML(node.num)}</span>
     </a>${link ? '<div class="loop-link" aria-hidden="true"></div>' : ''}`;
-  const stack = `<div class="loop-stack">${step(m.timers)}${step(m.inbox)}${step(m.memory)}${step(m.run)}${step(m.permissions)}${step(m.outbox)}${step(m.people, false)}</div>`;
+  const loopBack = `<a class="loop-back" href="${VIEW_PATHS.timers}" data-route="timers"><span class="loop-back-mark" aria-hidden="true">${icon('timers')}</span><span>Sets follow-ups and timers, which come back through the inbox</span></a>`;
+  const stack = `<div class="loop-stack">${step(m.timers)}${step(m.inbox)}${step(m.memory)}${step(m.run, false)}${loopBack}<div class="loop-link" aria-hidden="true"></div>${step(m.permissions)}${step(m.outbox)}${step(m.people, false)}</div>`;
   return svg + stack;
 }
 
