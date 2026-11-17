@@ -26,6 +26,9 @@ const state = {
   schedulesPaused: false,
   groups: [],
   health: null,
+  inbox: null,
+  outbox: null,
+  followups: null,
   settings: [],
   settingStatus: {},
   selectedPerson: null,
@@ -54,6 +57,7 @@ const VIEW_PATHS = {
   groups: '/console/groups',
   health: '/console/health',
   settings: '/console/settings',
+  messages: '/console/messages',
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -178,6 +182,7 @@ function routeFromPath(pathname = location.pathname) {
   if (path === '/console/groups') return { view: 'groups', taskId: null };
   if (path === '/console/health') return { view: 'health', taskId: null };
   if (path === '/console/settings') return { view: 'settings', taskId: null };
+  if (path === '/console/messages') return { view: 'messages', taskId: null };
   return { view: 'home', taskId: null, unknown: true };
 }
 
@@ -217,6 +222,7 @@ async function loadView(view = state.activeView, { force = false } = {}) {
     if (view === 'groups') await refreshGroups({ throwOnError: true });
     if (view === 'health') await refreshHealth({ throwOnError: true });
     if (view === 'settings') await refreshSettings({ throwOnError: true });
+    if (view === 'messages') await refreshMessages({ throwOnError: true });
     setStarting(false);
     if (view === 'tasks' && state.taskId) await openTask(state.taskId);
   } catch (error) {
@@ -241,7 +247,7 @@ async function loadSnapshot({ quiet = false } = {}) {
 }
 
 function renderUnavailable() {
-  for (const selector of ['#home-content', '#waiting-list', '#people-list', '#tasks-list', '#groups-list', '#health-content', '#settings-list']) {
+  for (const selector of ['#home-content', '#waiting-list', '#people-list', '#tasks-list', '#groups-list', '#health-content', '#settings-list', '#messages-content']) {
     const target = $(selector);
     if (target && !target.children.length) target.innerHTML = '<div class="empty-state">Data is not available yet.</div>';
   }
@@ -286,6 +292,7 @@ async function refreshHome({ throwOnError = false } = {}) {
     state.loaded.home = true;
     state.invalidated.home = false;
     renderHome();
+    refreshPulse();
   } catch (error) {
     if (throwOnError) throw error;
     showNotice(`Home not refreshed: ${error.message}`, 'error');
@@ -405,7 +412,7 @@ function renderHome() {
   const host = $('#home-content');
   host.setAttribute('aria-busy', 'false');
   if (!state.overview) { host.innerHTML = '<div class="empty-state">Data is not available yet.</div>'; return; }
-  host.innerHTML = homeStuckBlock() + homeRunningBlock() + homeDoneTodayBlock() + homeComingUpBlock() + homeSourcesLine();
+  host.innerHTML = '<div id="home-pulse" class="home-pulse" data-card-route="messages" role="link" tabindex="0">' + (state.health?.inbox ? pulseHTML() : '') + '</div>' + homeStuckBlock() + homeRunningBlock() + homeDoneTodayBlock() + homeComingUpBlock() + homeSourcesLine();
 }
 
 function renderRequests() {
@@ -440,6 +447,7 @@ function requestCard(request, index) {
       </div>
       <div>
         <p class="request-summary">${escapeHTML(summary)}</p>
+        ${request.outcome?.ask?.question ? `<p class="request-ask"><span>${request.outcome.ask.kind === 'permission' ? 'Needs your yes' : 'Needs your answer'}</span>${escapeHTML(request.outcome.ask.question.replace(/^Asked you:\s*/, ''))}</p>` : ''}
         <div class="scope-line">${request.scopes?.length ? scopeChips(request.scopes) : ''}</div>
       </div>
       <div class="request-actions">
@@ -463,7 +471,7 @@ function historyRow(request) {
   return `<div class="history-row" data-request-detail="${escapeHTML(request.id)}" role="button" tabindex="0">
     ${statePill(request.state)}
     <span>${escapeHTML(request.sender_name || request.sender || 'Unknown')}</span>
-    <span class="summary">${escapeHTML(clean(request.summary) || clean(request.original_message) || 'No summary')}</span>
+    <span class="summary-cell"><span class="summary">${escapeHTML(clean(request.summary) || clean(request.original_message) || 'No summary')}</span>${outcomeLine(request.outcome)}</span>
     <time datetime="${escapeHTML(request.created_at || '')}">${escapeHTML(formatTime(request.created_at))}</time>
   </div>`;
 }
@@ -1023,11 +1031,133 @@ function setFormBusy(form, busy) {
   $$('button, input, select, textarea', form).forEach(control => { control.disabled = busy; });
 }
 
+// ---- How a run ended, and the always-on loop (inbox, outbox, timers) ----------------
+// Every sentence here comes from the console API (outcome.text, kind_label, ...).
+const RUN_OUTCOME_CLASS = { sent: 'done', quiet: 'neutral', asked: 'pending', deferred: 'pending', failed: 'failed', none: 'neutral' };
+const OUTCOME_WORD = { sent: 'Sent', quiet: 'Quiet', asked: 'Asked you', deferred: 'Asked you', failed: 'Did not finish', none: 'Replied' };
+function outcomeLine(outcome) {
+  if (!outcome || !outcome.text) return '';
+  return `<span class="outcome-line outcome-${escapeHTML(outcome.kind)}"><span class="outcome-kind">${escapeHTML(OUTCOME_WORD[outcome.kind] || '')}</span>${escapeHTML(outcome.text.replace(/^(Sent to|Stayed quiet:?|Asked you:?)\s*/i, ''))}</span>`;
+}
+
+function relTime(value) {
+  const n = Number(value);
+  if (!n) return '';
+  const diff = n - Date.now() / 1000;
+  const abs = Math.abs(diff);
+  const unit = abs < 90 ? [Math.round(abs), 's'] : abs < 5400 ? [Math.round(abs / 60), 'm'] : abs < 129600 ? [Math.round(abs / 3600), 'h'] : [Math.round(abs / 86400), 'd'];
+  const text = `${unit[0]}${unit[1]}`;
+  return diff > 0 ? `in ${text}` : `${text} ago`;
+}
+
+function pulseHTML() {
+  const inbox = state.inbox?.counts || state.health?.inbox || {};
+  const outbox = state.outbox?.counts || state.health?.outbox || {};
+  const timers = state.followups ? state.followups.pending : null;
+  const cell = (label, value, cls = '') => `<div class="pulse-cell${cls && value ? ` ${cls}` : ''}"><span class="pulse-count">${escapeHTML(value ?? 0)}</span><span class="pulse-label">${escapeHTML(label)}</span></div>`;
+  return `<div class="pulse" role="group" aria-label="Messages moving through Blatbot">
+    <div class="pulse-stage"><span class="pulse-stage-name">In</span>${cell('waiting', inbox.pending, 'is-warn')}${cell('being handled', inbox.running, 'is-live')}${cell('failed', inbox.failed, 'is-bad')}</div>
+    <div class="pulse-arrow" aria-hidden="true"></div>
+    <div class="pulse-stage"><span class="pulse-stage-name">Out</span>${cell('sending', (outbox.queued || 0) + (outbox.sending || 0), 'is-live')}${cell('held', outbox.held, 'is-warn')}${cell('failed', outbox.failed, 'is-bad')}${cell('sent', outbox.sent)}</div>
+    ${timers === null ? '' : `<div class="pulse-arrow" aria-hidden="true"></div><div class="pulse-stage"><span class="pulse-stage-name">Later</span>${cell('follow-ups set', timers, 'is-live')}</div>`}
+  </div>`;
+}
+
+function inboxLaneHTML(lane) {
+  const busy = (lane.counts.pending || 0) + (lane.counts.running || 0);
+  const events = lane.events || [];
+  const row = event => `<li class="msg-row">
+      ${statePill(event.status === 'pending' ? 'queued' : event.status)}
+      <span class="msg-main"><span class="msg-meta">${escapeHTML([event.kind_label, event.surface, event.where && event.where !== lane.label ? event.where : ''].filter(Boolean).join(', '))}</span><span class="msg-text">${escapeHTML(clean(event.preview) || 'No text')}</span>${event.error ? `<span class="msg-error">${escapeHTML(event.error)}</span>` : ''}</span>
+      <time title="${escapeHTML(formatTime(event.created_at))}">${escapeHTML(relTime(event.created_at))}</time>
+    </li>`;
+  return `<article class="lane-card${busy ? ' is-busy' : ''}">
+    <header class="lane-head"><strong>${escapeHTML(lane.label)}</strong>
+      <span class="lane-counts">${busy ? `<span class="state state-running">${busy} open</span>` : ''}${lane.counts.failed ? `<span class="state state-failed">${lane.counts.failed} failed</span>` : ''}<span class="muted">${events.length} recent</span></span></header>
+    <ul class="msg-list">${events.slice(0, 3).map(row).join('')}</ul>
+    ${events.length > 3 ? `<details class="lane-more"><summary>${events.length - 3} more</summary><ul class="msg-list">${events.slice(3).map(row).join('')}</ul></details>` : ''}
+  </article>`;
+}
+
+function outboxRowHTML(row) {
+  return `<li class="msg-row${row.status === 'failed' ? ' is-failed' : row.status === 'held' ? ' is-held' : ''}">
+    ${statePill(row.status)}
+    <span class="msg-main"><span class="msg-meta"><strong>${escapeHTML(row.to)}</strong>${escapeHTML([row.surface, row.kind_label].filter(Boolean).map(x => `, ${x}`).join(''))}</span><span class="msg-text">${escapeHTML(row.preview || 'No text')}</span>${row.error ? `<span class="msg-error">${escapeHTML(row.error)}</span>` : ''}</span>
+    <time title="${escapeHTML(formatTime(row.sent_at || row.created_at))}">${escapeHTML(relTime(row.sent_at || row.created_at))}</time>
+  </li>`;
+}
+
+function followupRowHTML(row) {
+  return `<li class="msg-row">
+    ${statePill(row.status)}
+    <span class="msg-main"><span class="msg-meta"><strong>${escapeHTML(row.for)}</strong>${row.task_id ? `, task T${escapeHTML(row.task_id)}` : ''}</span><span class="msg-text">${escapeHTML(row.note || 'Check back')}</span>${row.result ? `<span class="msg-meta">${escapeHTML(row.result)}</span>` : ''}</span>
+    <time title="${escapeHTML(formatTime(row.due_at))}">${escapeHTML(row.status === 'pending' ? relTime(row.due_at) : relTime(row.fired_at || row.due_at))}</time>
+  </li>`;
+}
+
+function renderMessages() {
+  const host = $('#messages-content');
+  host.setAttribute('aria-busy', 'false');
+  const lanes = state.inbox?.lanes || [];
+  const rank = { failed: 0, held: 1, sending: 2, queued: 3, sent: 4 };
+  const out = [...(state.outbox?.rows || [])].sort((a, b) => (rank[a.status] ?? 5) - (rank[b.status] ?? 5) || b.id - a.id);
+  const timers = state.followups?.rows || [];
+  host.innerHTML = `${pulseHTML()}
+    <div class="messages-grid">
+      <section class="activity-panel" aria-labelledby="inbox-title">
+        <header class="activity-head"><h3 id="inbox-title">Incoming</h3><span class="muted">by person</span></header>
+        ${lanes.length ? `<div class="lane-list">${lanes.map(inboxLaneHTML).join('')}</div>` : '<p class="activity-empty">Nothing has come in yet.</p>'}
+      </section>
+      <section class="activity-panel" aria-labelledby="outbox-title">
+        <header class="activity-head"><h3 id="outbox-title">Outgoing</h3><span class="muted">${escapeHTML(out.length)} recent</span></header>
+        ${out.length ? `<ul class="msg-list">${out.slice(0, 40).map(outboxRowHTML).join('')}</ul>` : '<p class="activity-empty">Nothing has gone out yet.</p>'}
+      </section>
+      <section class="activity-panel activity-wide" aria-labelledby="followups-title">
+        <header class="activity-head"><h3 id="followups-title">Follow-ups</h3><span class="muted">${escapeHTML(state.followups?.pending ?? 0)} set</span></header>
+        ${state.followups && !state.followups.available ? '<p class="activity-empty">Follow-up timers are not available on this server.</p>'
+          : timers.length ? `<ul class="msg-list">${timers.slice(0, 30).map(followupRowHTML).join('')}</ul>` : '<p class="activity-empty">No run has set a follow-up yet.</p>'}
+      </section>
+    </div>`;
+  updateMessagesBadge();
+}
+
+function updateMessagesBadge() {
+  const outbox = state.outbox?.counts || state.health?.outbox || {};
+  const inbox = state.inbox?.counts || state.health?.inbox || {};
+  const trouble = (outbox.failed || 0) + (outbox.held || 0) + (inbox.failed || 0);
+  const badge = $('#nav-messages-count');
+  if (!badge) return;
+  badge.hidden = !trouble;
+  badge.textContent = trouble;
+}
+
+async function refreshMessages({ throwOnError = false } = {}) {
+  try {
+    const [inbox, outbox, followups] = await Promise.all([api('/inbox'), api('/outbox'), api('/followups')]);
+    Object.assign(state, { inbox, outbox, followups });
+    state.loaded.messages = true; state.invalidated.messages = false;
+    renderMessages();
+  } catch (error) {
+    if (throwOnError) throw error;
+    showNotice(`Messages not refreshed: ${error.message}`, 'error');
+  }
+}
+
+async function refreshPulse() {
+  try {
+    const [health, followups] = await Promise.all([api('/health'), api('/followups?limit=1')]);
+    state.health = health; state.followups = state.followups?.rows?.length > 1 ? state.followups : followups;
+    const slot = $('#home-pulse');
+    if (slot) slot.innerHTML = pulseHTML();
+    updateMessagesBadge();
+  } catch { /* An older API without these counts keeps Home as it was. */ }
+}
+
 function renderTasks() {
   $('#tasks-list').setAttribute('aria-busy', 'false');
   $('#tasks-list').innerHTML = state.tasks.length ? state.tasks.map(task => `<button class="task-row" type="button" data-task-id="${escapeHTML(task.id)}">
     <span class="mono task-id">T${escapeHTML(task.id)}</span>
-    <span class="summary">${escapeHTML(clean(task.title) || 'Untitled task')}${cleanText(task.title).group ? `<span class="where-chip">${escapeHTML(cleanText(task.title).group)}</span>` : ''}</span>
+    <span class="summary-cell"><span class="summary">${escapeHTML(clean(task.title) || 'Untitled task')}${cleanText(task.title).group ? `<span class="where-chip">${escapeHTML(cleanText(task.title).group)}</span>` : ''}</span>${outcomeLine(task.outcome)}</span>
     ${statePill(task.state)}
     <time datetime="${escapeHTML(task.updated_at || '')}">${escapeHTML(formatTime(task.updated_at))}</time>
     <span class="participant-list">${escapeHTML(uniqueNames(task.participants || []).join(', '))}</span>
@@ -1039,8 +1169,10 @@ function renderTasks() {
 function renderLedger(task) {
   const events = Array.isArray(task.events) ? task.events : [];
   const host = $('#ledger-content');
-  if (!events.length) { host.textContent = 'No ledger entries recorded.'; return; }
-  host.innerHTML = events.map(event => {
+  const runs = Array.isArray(task.runs) ? task.runs : [];
+  const runsHTML = runs.length ? `<section class="ledger-runs"><h3>Runs</h3><ul class="msg-list">${runs.map(run => `<li class="msg-row">${statePill(run.state)}<span class="msg-main"><span class="msg-meta">#${escapeHTML(run.id)}</span><span class="msg-text">${escapeHTML(clean(run.summary) || 'Run')}</span>${outcomeLine(run.outcome)}</span><time>${escapeHTML(relTime(run.created_at))}</time></li>`).join('')}</ul></section>` : '';
+  if (!events.length) { host.innerHTML = runsHTML || 'No ledger entries recorded.'; return; }
+  host.innerHTML = runsHTML + events.map(event => {
     const when = event.created_at ? new Date(event.created_at * 1000).toISOString() : '';
     return `<article class="ledger-entry">
       <header class="ledger-meta">
@@ -1093,6 +1225,7 @@ function renderHealth() {
     <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Uptime</dt><dd>${escapeHTML(formatDuration(state.health.uptime_s ?? state.health.uptime_seconds))}</dd></div>
     <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Last restart</dt><dd>${escapeHTML(formatTime(state.health.last_restart))}</dd></div>
   </dl>
+  ${state.health.inbox ? pulseHTML() : ''}
   <div class="health-columns">
     <div data-info-card role="button" tabindex="0"><h3>Interrupted runs (${interruptedCount})</h3><ul class="health-list">${interrupted.length ? interrupted.map(item => `<li>${escapeHTML(typeof item === 'string' ? item : JSON.stringify(item))}</li>`).join('') : `<li>${interruptedCount ? `${interruptedCount === 1 ? '1 run was' : `${interruptedCount} runs were`} cut off by a restart.` : 'None'}</li>`}</ul></div>
     <div data-info-card role="button" tabindex="0"><h3>Recent errors (${errors.length})</h3><ul class="health-list">${errors.length ? errors.map(item => `<li>${escapeHTML(typeof item === 'string' ? item : JSON.stringify(item))}</li>`).join('') : '<li>None</li>'}</ul></div>
@@ -2046,6 +2179,7 @@ $('#retry-all').addEventListener('click', () => loadSnapshot());
 $('#refresh-tasks').addEventListener('click', refreshTasks);
 $('#refresh-groups').addEventListener('click', () => refreshGroups());
 $('#refresh-health').addEventListener('click', refreshHealth);
+$('#refresh-messages').addEventListener('click', () => refreshMessages());
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => {
   if (event.target === dialog) dialog.close();
 }));
@@ -2089,7 +2223,7 @@ document.addEventListener('click', event => {
     navigate(VIEW_PATHS[card.dataset.cardRoute]);
   } else if (card.dataset.requestDetail) {
     const request = state.requests.find(r => String(r.id) === card.dataset.requestDetail);
-    if (request) openCardDetail(request.summary || 'Request', [request.sender_name || request.sender, request.state, request.original_message, request.result_line || request.final_status].filter(Boolean).join('\n\n'));
+    if (request) openCardDetail(request.summary || 'Request', [request.sender_name || request.sender, stateWord(request.state), request.outcome?.text, clean(request.original_message), request.result_line || request.final_status].filter(Boolean).join('\n\n'));
   } else if (card.matches('.schedule-card')) {
     card.querySelector('[data-schedule-history]').click();
   } else if (card.matches('.role-row')) {
