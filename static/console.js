@@ -33,7 +33,8 @@ const state = {
   settingStatus: {},
   selectedPerson: null,
   selectedWaiting: 0,
-  requestFilter: 'all',
+  activityFilter: 'all',
+  activityLimit: 40,
   search: '',
   eventSource: null,
   reconnectTimer: null,
@@ -48,17 +49,38 @@ const state = {
 
 const VIEW_PATHS = {
   home: '/console/',
-  requests: '/console/requests',
-  people: '/console/people',
-  roles: '/console/roles',
-  scopes: '/console/scopes',
-  tasks: '/console/tasks',
-  schedules: '/console/schedules',
-  groups: '/console/groups',
-  health: '/console/health',
-  settings: '/console/settings',
+  activity: '/console/activity',
   messages: '/console/messages',
+  schedules: '/console/schedules',
+  people: '/console/people',
+  roles: '/console/people/roles',
+  groups: '/console/people/groups',
+  settings: '/console/settings',
+  scopes: '/console/scopes',
 };
+// Pages that live under another menu item: the menu marks the parent as current.
+const NAV_PARENT = { roles: 'people', groups: 'people', scopes: 'settings' };
+const VIEW_TITLES = { home: 'Home', activity: 'Activity', messages: 'Messages', schedules: 'Schedules', people: 'People', roles: 'Roles', groups: 'Group chats', settings: 'Settings', scopes: 'Every permission' };
+// Pages that were merged into others keep working as links: each old address moves to its new home.
+const OLD_PATHS = {
+  requests: VIEW_PATHS.home, tasks: VIEW_PATHS.activity, roles: VIEW_PATHS.roles, groups: VIEW_PATHS.groups,
+  health: VIEW_PATHS.settings, scopes: VIEW_PATHS.scopes, permissions: VIEW_PATHS.people, activity: VIEW_PATHS.activity,
+  messages: VIEW_PATHS.messages, schedules: VIEW_PATHS.schedules, people: VIEW_PATHS.people, settings: VIEW_PATHS.settings, home: VIEW_PATHS.home,
+};
+// Plain words for values the backend stores as code names. The stored value is unchanged.
+const CHOICE_WORDS = {
+  GATE_EXECUTOR: { claude: 'Claude Code', jev: 'Jev, the fast engine' },
+  GATE_STRONG_MODEL: { opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' },
+  GATE_FAST_MODEL: { opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' },
+  GATE_TASK_PICKER: { jev: 'Typed judgments', router: 'The writing model' },
+  GATE_HTML_PAGES_AUDIENCE: { off: 'No one', owner: 'Only you', everyone: 'Everyone' },
+};
+// Switches for finished migrations and engine internals: kept, but out of the everyday list.
+const ADVANCED_SETTINGS = new Set(['GATE_INBOX', 'GATE_PERSON_INBOX', 'GATE_RUN_OUTCOMES', 'GATE_NATIVE_DEFER', 'GATE_AUTO_MODE',
+  'GATE_DECIDE_GRAPH', 'GATE_TASK_PICKER', 'GATE_EXECUTOR', 'GATE_EXECUTOR_FALLBACK', 'SESSION_MAX_AGE_HOURS',
+  'GATE_CONTEXT_BUDGET_CHARS', 'GATE_VAULT_ATTACH_BUDGET_CHARS', 'GATE_TELEGRAM_STALE_MIN', 'GATE_ACCESS_ASKS']);
+const sentenceCase = value => { const text = String(value || ''); return text ? text[0].toUpperCase() + text.slice(1) : text; };
+const roleLabel = name => sentenceCase(name);
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -167,23 +189,29 @@ function scopeChips(scopes = []) {
 function routeFromPath(pathname = location.pathname) {
   const path = pathname.replace(/\/+$/, '') || '/console';
   if (path === '/console') return { view: 'home', taskId: null };
-  if (path === '/console/requests') return { view: 'requests', taskId: null };
-  if (path === '/console/permissions') return { view: 'people', taskId: null };
-  if (path === '/console/people') return { view: 'people', taskId: null };
-  if (path === '/console/roles') return { view: 'roles', taskId: null };
-  if (path === '/console/scopes') return { view: 'scopes', taskId: null };
-  if (path === '/console/tasks') return { view: 'tasks', taskId: null };
-  if (path.startsWith('/console/tasks/')) {
-    const encodedId = path.slice('/console/tasks/'.length);
-    try { return { view: 'tasks', taskId: decodeURIComponent(encodedId) }; }
-    catch { return { view: 'tasks', taskId: encodedId }; }
+  for (const prefix of ['/console/activity/', '/console/tasks/']) {
+    if (path.startsWith(prefix)) {
+      const encodedId = path.slice(prefix.length);
+      let taskId = encodedId;
+      try { taskId = decodeURIComponent(encodedId); } catch { /* keep the raw id */ }
+      const canonical = `${VIEW_PATHS.activity}/${encodeURIComponent(taskId)}`;
+      return { view: 'activity', taskId, redirect: path === canonical ? null : canonical };
+    }
   }
-  if (path === '/console/schedules') return { view: 'schedules', taskId: null };
-  if (path === '/console/groups') return { view: 'groups', taskId: null };
-  if (path === '/console/health') return { view: 'health', taskId: null };
-  if (path === '/console/settings') return { view: 'settings', taskId: null };
-  if (path === '/console/messages') return { view: 'messages', taskId: null };
+  const view = Object.keys(VIEW_PATHS).find(name => VIEW_PATHS[name].replace(/\/+$/, '') === path);
+  if (view) return { view, taskId: null };
+  const old = path.match(/^\/console\/([a-z]+)$/);
+  if (old && OLD_PATHS[old[1]]) {
+    const target = OLD_PATHS[old[1]];
+    return { ...routeFromPath(target), redirect: target };
+  }
   return { view: 'home', taskId: null, unknown: true };
+}
+
+// A bookmark with an old #page address goes to that page's new home.
+function oldHashTarget() {
+  const name = (location.hash || '').replace(/^#\/?/, '').toLowerCase();
+  return name && OLD_PATHS[name] ? OLD_PATHS[name] : null;
 }
 
 function updateWaitingCount() {
@@ -191,12 +219,8 @@ function updateWaitingCount() {
   const navBadge = $('#nav-waiting-count');
   navBadge.hidden = !count;
   navBadge.textContent = count;
-  $('#mobile-request-status').hidden = !count;
-  $('#mobile-waiting-count').textContent = count;
-  $('#waiting-count').textContent = count;
-  // Amber means something needs you, so a zero is not amber.
-  $('#waiting-count').classList.toggle('is-zero', !count);
-  $('#waiting-summary').textContent = count ? `${count} request${count === 1 ? ' needs' : 's need'} a decision.` : 'No decisions are waiting.';
+  const homeCount = $('#home-waiting-count');
+  if (homeCount) homeCount.textContent = count;
 }
 
 async function refreshWaitingCount() {
@@ -208,23 +232,21 @@ async function refreshWaitingCount() {
 
 async function loadView(view = state.activeView, { force = false } = {}) {
   if (!force && state.loaded[view] && !state.invalidated[view]) {
-    if (view === 'tasks' && state.taskId) await openTask(state.taskId);
+    if (view === 'activity' && state.taskId) await openTask(state.taskId);
     return;
   }
   try {
     if (view === 'home') await refreshHome({ throwOnError: true });
-    if (view === 'requests') await refreshRequests({ throwOnError: true });
+    if (view === 'activity') await refreshActivity({ throwOnError: true });
     if (view === 'people') await refreshPeople({ throwOnError: true });
     if (view === 'roles') await refreshRoles({ throwOnError: true });
     if (view === 'scopes') await refreshScopesBreakdown({ throwOnError: true });
-    if (view === 'tasks') await refreshTasks({ throwOnError: true });
     if (view === 'schedules') await refreshSchedules({ throwOnError: true });
     if (view === 'groups') await refreshGroups({ throwOnError: true });
-    if (view === 'health') await refreshHealth({ throwOnError: true });
-    if (view === 'settings') await refreshSettings({ throwOnError: true });
+    if (view === 'settings') await Promise.all([refreshSettings({ throwOnError: true }), refreshHealth({ throwOnError: true })]);
     if (view === 'messages') await refreshMessages({ throwOnError: true });
     setStarting(false);
-    if (view === 'tasks' && state.taskId) await openTask(state.taskId);
+    if (view === 'activity' && state.taskId) await openTask(state.taskId);
   } catch (error) {
     if (error.status === 503) {
       setStarting(true, error.message || 'The console will retry when the API is ready.');
@@ -241,13 +263,13 @@ async function loadView(view = state.activeView, { force = false } = {}) {
 async function loadSnapshot({ quiet = false } = {}) {
   state.invalidated[state.activeView] = true;
   const loads = [loadView(state.activeView, { force: true })];
-  if (state.activeView !== 'requests') loads.push(refreshWaitingCount());
+  if (state.activeView !== 'home') loads.push(refreshWaitingCount());
   await Promise.all(loads);
   if (!quiet) showNotice('Console refreshed.');
 }
 
 function renderUnavailable() {
-  for (const selector of ['#home-content', '#waiting-list', '#people-list', '#tasks-list', '#groups-list', '#health-content', '#settings-list', '#messages-content']) {
+  for (const selector of ['#home-content', '#activity-list', '#people-list', '#groups-list', '#health-content', '#settings-list', '#messages-content']) {
     const target = $(selector);
     if (target && !target.children.length) target.innerHTML = '<div class="empty-state">Data is not available yet.</div>';
   }
@@ -276,7 +298,11 @@ function relativeAge(value) {
 
 async function refreshHome({ throwOnError = false } = {}) {
   try {
-    state.overview = await api('/overview');
+    const [overview, pending] = await Promise.all([api('/overview'), api('/requests?state=pending')]);
+    state.overview = overview;
+    state.requests = [...pending, ...state.requests.filter(request => request.state !== 'pending')]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    loadScopeLabels();
     // Older overview APIs omit the actual error; resolve it from the last run.
     if ((state.overview.stuck || []).some(row => row.kind === 'schedule' && /it did not say why/i.test(row.sentence))) {
       try {
@@ -306,73 +332,83 @@ const HOME_OUTCOME_WORD = { finished: 'Finished', could_not_finish: 'Could not f
 
 function homeActionButtons(actions) {
   return (actions || [])
-    .map(a => a.action === 'wait' ? `<span class="muted">${escapeHTML(a.label)}</span>` : `<button type="button" class="button button-quiet" data-home-action="${escapeHTML(JSON.stringify(a))}">${escapeHTML(a.label)}</button>`)
+    .map(a => a.action === 'wait' ? `<span class="muted">${escapeHTML(a.label)}</span>` : `<button type="button" class="button ${a.action === 'approve' ? 'button-primary' : 'button-secondary'}" data-home-action="${escapeHTML(JSON.stringify(a))}">${escapeHTML(a.label)}</button>`)
     .join('');
 }
 
+function homeSection(id, title, count, body, { link = '', linkLabel = '', tone = '' } = {}) {
+  return `<section class="home-block home-${id}${tone ? ` is-${tone}` : ''}" aria-labelledby="home-${id}-title">
+    <header class="block-head">
+      <h2 id="home-${id}-title">${escapeHTML(title)}</h2>
+      <span class="block-count"${id === 'waiting' ? ' id="home-waiting-count"' : ''}>${escapeHTML(count)}</span>
+      ${link ? `<a class="button button-quiet button-small" href="${VIEW_PATHS[link]}" data-route="${link}">${escapeHTML(linkLabel)}</a>` : ''}
+    </header>
+    ${body}
+  </section>`;
+}
+
+function homeWaitingBlock() {
+  const waiting = pendingRequests();
+  state.selectedWaiting = Math.max(0, Math.min(state.selectedWaiting, waiting.length - 1));
+  return homeSection('waiting', 'Waiting on you', waiting.length,
+    `<div id="waiting-list" class="panel waiting-list">${waiting.length ? waiting.map((request, index) => requestCard(request, index)).join('') : '<p class="empty-line">Nothing is waiting on you.</p>'}</div>`,
+    { tone: waiting.length ? 'waiting' : '' });
+}
+
 function homeStuckBlock() {
-  const rows = state.overview?.stuck || [];
-  const quiet = !rows.length;
-  return `<article data-card-route="${rows.length && rows.every(row => row.kind === 'schedule') ? 'schedules' : 'requests'}" role="link" tabindex="0" class="home-card home-stuck${quiet ? ' is-quiet' : ' is-urgent'}" aria-labelledby="home-stuck-title">
-    <div class="home-card-head">
-      <h2 id="home-stuck-title">Stuck</h2>
-      <span class="home-needs-count">${rows.length}</span>
-    </div>
-    ${quiet
-      ? '<p class="home-card-body muted">Nothing is stuck.</p>'
-      : `<ul class="home-mini-list">${rows.map(row => `<li class="home-row" data-card-route="${row.kind === 'schedule' ? 'schedules' : 'requests'}" role="link" tabindex="0">
-          <div class="home-row-body">
-            <p class="home-card-body">${escapeHTML(clean(row.sentence))}</p>
-            ${row.since_text ? `<span class="muted">${escapeHTML(row.since_text)}</span>` : ''}
+  // Approvals already sit in Waiting on you with their full card; Stuck lists the rest.
+  const pendingIds = new Set(pendingRequests().map(request => String(request.id)));
+  const rows = (state.overview?.stuck || []).filter(row => !(row.kind === 'approval' && pendingIds.has(String(row.id))));
+  return homeSection('stuck', 'Stuck', rows.length, `<div class="panel">${rows.length
+    ? `<ul class="row-list">${rows.map(row => `<li class="row stuck-row">
+          <div class="row-main">
+            <p class="row-title">${escapeHTML(clean(row.sentence))}</p>
+            ${row.since_text ? `<span class="row-meta">${escapeHTML(row.since_text)}</span>` : ''}
           </div>
-          <div class="home-row-actions">${homeActionButtons(row.actions)}</div>
-        </li>`).join('')}</ul>`}
-  </article>`;
+          <div class="row-actions">${homeActionButtons(row.actions)}</div>
+        </li>`).join('')}</ul>`
+    : '<p class="empty-line">Nothing is stuck.</p>'}</div>`, { tone: rows.length ? 'failed' : '' });
 }
 
 function homeRunningBlock() {
   const rows = state.overview?.running || [];
-  return `<article class="home-card home-running" data-card-route="tasks" role="link" tabindex="0" aria-labelledby="home-running-title">
-    <div class="home-card-head"><h2 id="home-running-title">Running</h2><span class="home-needs-count">${rows.length}</span></div>
-    ${rows.length
-      ? `<ul class="home-mini-list">${rows.map(row => `<li>
+  return homeSection('running', 'Running', rows.length, `<div class="panel">${rows.length
+    ? `<ul class="row-list">${rows.map(row => `<li class="row">
           <span class="state state-running">Running</span>
-          <span class="home-mini-summary">${escapeHTML(clean(row.sentence))}${row.latest_step ? ` &middot; ${escapeHTML(row.latest_step)}` : ''}</span>
-          <span class="muted">${escapeHTML(row.started_text || '')}</span>
+          <div class="row-main"><p class="row-title">${escapeHTML(clean(row.sentence))}</p>${row.latest_step ? `<span class="row-meta">${escapeHTML(row.latest_step)}</span>` : ''}</div>
+          <span class="row-time">${escapeHTML(row.started_text || '')}</span>
         </li>`).join('')}</ul>`
-      : '<p class="home-card-body muted">Nothing is running.</p>'}
-  </article>`;
+    : '<p class="empty-line">Nothing is running.</p>'}</div>`, { link: 'activity', linkLabel: 'Activity' });
 }
 
 function homeDoneTodayBlock() {
   const rows = state.overview?.done_today || [];
-  return `<article class="home-card home-done-today" data-card-route="tasks" role="link" tabindex="0" aria-labelledby="home-done-title">
-    <div class="home-card-head"><h2 id="home-done-title">Done today</h2><span class="home-needs-count">${rows.length}</span></div>
-    ${rows.length
-      ? `<ul class="home-mini-list">${rows.map(row => `<li>
+  return homeSection('done', 'Done today', rows.length, `<div class="panel">${rows.length
+    ? `<ul class="row-list">${rows.map(row => `<li class="row">
           <span class="state state-${HOME_OUTCOME_STATE[row.outcome] || 'neutral'}">${escapeHTML(HOME_OUTCOME_WORD[row.outcome] || row.outcome)}</span>
-          <span class="home-mini-summary">${escapeHTML(clean(row.sentence))}</span>
-          <span class="muted">${escapeHTML(row.time_text || '')}</span>
+          <div class="row-main"><p class="row-title">${escapeHTML(clean(row.sentence))}</p></div>
+          <span class="row-time">${escapeHTML(shortTimeText(row.time_text))}</span>
         </li>`).join('')}</ul>`
-      : '<p class="home-card-body muted">Nothing finished today yet.</p>'}
-  </article>`;
+    : '<p class="empty-line">Nothing finished today yet.</p>'}</div>`, { link: 'activity', linkLabel: 'Activity' });
 }
 
 function homeComingUpBlock() {
   const rows = state.overview?.coming_up || [];
-  return `<article class="home-card home-coming-up" data-card-route="schedules" role="link" tabindex="0" aria-labelledby="home-coming-up-title">
-    <div class="home-card-head"><h2 id="home-coming-up-title">Coming up</h2><span class="home-needs-count">${rows.length}</span></div>
-    ${rows.length
-      ? `<ul class="home-mini-list">${rows.map(s => `<li><span class="home-mini-summary"><strong>${escapeHTML(s.title)}</strong> &middot; ${escapeHTML(s.cadence_text)}</span><span class="muted">${escapeHTML(s.next_run_text || '')}</span></li>`).join('')}</ul>`
-      : '<p class="home-card-body muted">No scheduled runs are coming up.</p>'}
-    <a class="home-card-link" href="${VIEW_PATHS.schedules}" data-home-link="schedules">See schedules</a>
-  </article>`;
+  return homeSection('coming', 'Coming up', rows.length, `<div class="panel">${rows.length
+    ? `<ul class="row-list">${rows.map(s => `<li class="row">
+          <div class="row-main"><p class="row-title">${escapeHTML(s.title)}</p><span class="row-meta">${escapeHTML(sentenceCase(s.cadence_text))}</span></div>
+          <span class="row-time">${escapeHTML(shortTimeText(s.next_run_text))}</span>
+        </li>`).join('')}</ul>`
+    : '<p class="empty-line">Nothing scheduled.</p>'}</div>`, { link: 'schedules', linkLabel: 'Schedules' });
 }
 
-function homeSourcesLine() {
-  const sources = state.overview?.sources || [];
-  if (!sources.length) return '';
-  return `<p class="home-sources">${sources.map(s => `${escapeHTML(s.label)}: ${escapeHTML(s.detail)}`).join(' &middot; ')}</p>`;
+// "Mon Nov 16, 9:57 PM EST" reads as just the time when it is today.
+function shortTimeText(text) {
+  const value = String(text || '');
+  const now = new Date();
+  const part = options => new Intl.DateTimeFormat('en-US', options).format(now);
+  const today = `${part({ weekday: 'short' })} ${part({ month: 'short' })} ${part({ day: 'numeric' })}`;
+  return value.startsWith(`${today}, `) ? value.slice(today.length + 2) : value;
 }
 
 async function homeAction(action) {
@@ -412,26 +448,44 @@ function renderHome() {
   const host = $('#home-content');
   host.setAttribute('aria-busy', 'false');
   if (!state.overview) { host.innerHTML = '<div class="empty-state">Data is not available yet.</div>'; return; }
-  host.innerHTML = '<div id="home-pulse" class="home-pulse" data-card-route="messages" role="link" tabindex="0">' + (state.health?.inbox ? pulseHTML() : '') + '</div>' + homeStuckBlock() + homeRunningBlock() + homeDoneTodayBlock() + homeComingUpBlock() + homeSourcesLine();
+  // A live update must not throw away an edit Aaron is typing into a waiting request.
+  const drafts = $$('.request-card', host).map(card => ({ id: card.dataset.requestId, open: !$('.decision-note', card).hidden, text: $('textarea', card)?.value || '' })).filter(d => d.open || d.text);
+  const focusedId = document.activeElement?.closest?.('.request-card textarea') ? document.activeElement.closest('.request-card').dataset.requestId : null;
+  host.innerHTML = `<div id="home-pulse" class="home-pulse">${state.health?.inbox ? pulseHTML() : ''}</div>
+    ${homeWaitingBlock()}
+    <div class="home-columns">${homeStuckBlock()}<div class="home-side">${homeRunningBlock()}${homeComingUpBlock()}</div></div>
+    ${homeDoneTodayBlock()}`;
+  drafts.forEach(draft => {
+    const card = $(`.request-card[data-request-id="${CSS.escape(draft.id)}"]`, host);
+    if (!card) return;
+    $('.decision-note', card).hidden = !draft.open;
+    $('[data-show-edit]', card)?.setAttribute('aria-expanded', String(draft.open));
+    $('textarea', card).value = draft.text;
+    if (draft.id === focusedId) $('textarea', card).focus({ preventScroll: true });
+  });
+  updateWaitingCount();
 }
 
 function renderRequests() {
-  const waiting = pendingRequests();
-  state.selectedWaiting = Math.max(0, Math.min(state.selectedWaiting, waiting.length - 1));
-  const count = waiting.length;
-  updateWaitingCount();
-  $('#waiting-list').setAttribute('aria-busy', 'false');
-  $('#waiting-list').innerHTML = count
-    ? waiting.map((request, index) => requestCard(request, index)).join('')
-    : '<div class="waiting-empty"><strong>Nothing waiting.</strong>New requests will appear here as they arrive.</div>';
+  if (state.activeView === 'home' && state.overview) renderHome();
+  else updateWaitingCount();
+}
 
-  const counts = ['running', 'done', 'failed'].map(name => {
-    const n = state.requests.filter(r => r.state === name).length;
-    return `${n}${n >= 100 ? '+' : ''} ${stateWord(name).toLowerCase()}`;
-  }).join(', ');
-  $('#history-counts').textContent = counts;
-  const history = state.requests.filter(request => request.state !== 'pending' && (state.requestFilter === 'all' || request.state === state.requestFilter));
-  $('#request-history').innerHTML = history.length ? history.map(historyRow).join('') : '<div class="empty-state">No requests in this state.</div>';
+// Plain names for the systems a request would use, from the scope registry.
+async function loadScopeLabels() {
+  if (state.scopeLabels || state.scopeLabelsLoading) return;
+  state.scopeLabelsLoading = true;
+  try {
+    const [scopes, summary] = await Promise.all([api('/scopes'), state.rolesSummary ? state.rolesSummary : api('/roles/summary')]);
+    const systems = Object.fromEntries((summary.systems || []).map(sys => [sys.system, sys.system_label]));
+    state.scopeLabels = Object.fromEntries(scopes.map(scope => [scope.name, systems[scope.group] || sentenceCase(String(scope.group || scope.name).replace(/_/g, ' '))]));
+    if (state.activeView === 'home' && pendingRequests().some(request => (request.scopes || []).length)) renderHome();
+  } catch { state.scopeLabels = {}; }
+  finally { state.scopeLabelsLoading = false; }
+}
+function scopeLabelChips(scopes = []) {
+  const labels = [...new Set(scopes.map(scope => state.scopeLabels?.[scope] || sentenceCase(String(scope).replace(/[_:]/g, ' '))))];
+  return labels.map(label => `<span class="tag">${escapeHTML(label)}</span>`).join('');
 }
 
 function requestCard(request, index) {
@@ -443,23 +497,20 @@ function requestCard(request, index) {
       <div class="request-who">
         <div class="sender">${escapeHTML(request.sender_name || request.sender || 'Unknown sender')}</div>
         <div class="surface">${escapeHTML(where || 'Unknown surface')}</div>
-        <div class="request-id">#${escapeHTML(request.id)}</div>
+        <div class="request-id">#${escapeHTML(request.id)} <span class="row-time">${escapeHTML(relativeAge(request.created_at))}</span></div>
       </div>
-      <div>
+      <div class="request-body">
         <p class="request-summary">${escapeHTML(summary)}</p>
         ${request.outcome?.ask?.question ? `<p class="request-ask"><span>${request.outcome.ask.kind === 'permission' ? 'Needs your yes' : 'Needs your answer'}</span>${escapeHTML(request.outcome.ask.question.replace(/^Asked you:\s*/, ''))}</p>` : ''}
-        <div class="scope-line">${request.scopes?.length ? scopeChips(request.scopes) : ''}</div>
+        ${request.scopes?.length ? `<div class="tag-line">${scopeLabelChips(request.scopes)}</div>` : ''}
+        ${message.text && message.text !== summary ? `<details class="original-message"><summary>What they wrote</summary><blockquote>${escapeHTML(message.text)}</blockquote></details>` : ''}
       </div>
       <div class="request-actions">
-        <button class="button button-approve" type="button" data-decision="yes">Approve</button>
-        <button class="button button-reject" type="button" data-decision="no">Decline</button>
-        <button class="button button-quiet" type="button" data-show-edit>Edit</button>
+        <button class="button button-primary" type="button" data-decision="yes">Approve</button>
+        <button class="button button-secondary" type="button" data-decision="no">Decline</button>
+        <button class="button button-quiet" type="button" data-show-edit aria-expanded="false">Edit</button>
       </div>
     </div>
-    <details class="original-message">
-      <summary>What they wrote, ${escapeHTML(formatTime(request.created_at))}</summary>
-      <blockquote>${escapeHTML(message.text || 'No message recorded.')}</blockquote>
-    </details>
     <div class="decision-note" hidden>
       <textarea aria-label="Edited instruction" placeholder="What it should do instead"></textarea>
       <button class="button button-primary" type="button" data-decision="edit">Run edit</button>
@@ -467,14 +518,6 @@ function requestCard(request, index) {
   </article>`;
 }
 
-function historyRow(request) {
-  return `<div class="history-row" data-request-detail="${escapeHTML(request.id)}" role="button" tabindex="0">
-    ${statePill(request.state)}
-    <span>${escapeHTML(request.sender_name || request.sender || 'Unknown')}</span>
-    <span class="summary-cell"><span class="summary">${escapeHTML(clean(request.summary) || clean(request.original_message) || 'No summary')}</span>${outcomeLine(request.outcome)}</span>
-    <time datetime="${escapeHTML(request.created_at || '')}">${escapeHTML(formatTime(request.created_at))}</time>
-  </div>`;
-}
 
 async function decide(requestId, decision, note) {
   const card = $(`[data-request-id="${CSS.escape(requestId)}"]`);
@@ -490,30 +533,14 @@ async function decide(requestId, decision, note) {
     if (note?.trim()) payload.note = note.trim();
     const result = await post('/requests/decide', payload);
     const actualState = result?.state || (decision === 'no' ? 'rejected' : 'approved');
-    showNotice(`Request ${requestId} is ${actualState}.`);
+    showNotice(`Request #${requestId} ${stateWord(actualState).toLowerCase()}.`);
   } catch (error) {
     const actual = error.payload?.state || error.payload?.current_state || error.payload?.request?.state;
     const detail = actual ? `${error.message} Current state: ${actual}.` : error.message;
     showNotice(`Decision not applied: ${detail}`, 'error', 8000);
   } finally {
-    await refreshRequests();
-  }
-}
-
-async function refreshRequests({ throwOnError = false } = {}) {
-  try {
-    const [overview, ...requests] = await Promise.all([
-      api('/overview'),
-      ...['pending', 'running', 'done', 'failed'].map(requestState => api(`/requests?state=${requestState}`)),
-    ]);
-    state.overview = overview;
-    state.requests = requests.flat().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    state.loaded.requests = true;
-    state.invalidated.requests = false;
-    renderRequests();
-  } catch (error) {
-    if (throwOnError) throw error;
-    showNotice(`Request status could not be refreshed: ${error.message}`, 'error');
+    state.invalidated.activity = true;
+    await refreshHome();
   }
 }
 
@@ -535,11 +562,11 @@ function heldRoles(value) { return String(value || '').split(',').map(n => n.tri
 function addableRoleOptions(p) {
   const held = new Set((p?.role_badges || []).map(rb => rb.name));
   return (state.rolesSummary?.roles || []).filter(r => !r.locked && !held.has(r.name))
-    .map(r => `<option value="${escapeHTML(r.name)}">${escapeHTML(r.name)}</option>`).join('');
+    .map(r => `<option value="${escapeHTML(r.name)}">${escapeHTML(roleLabel(r.name))}</option>`).join('');
 }
 function personRoleChips(p) {
-  const chips = (p.role_badges || []).map(rb => `<span class="person-role-chip${rb.locked ? ' person-role-chip-locked' : ''}">${escapeHTML(rb.name)}${rb.locked ? '' : `<button type="button" class="person-role-chip-remove" data-remove-person-role="${escapeHTML(rb.name)}" aria-label="Remove ${escapeHTML(rb.name)} from ${escapeHTML(personName(p))}">&times;</button>`}</span>`).join('');
-  const addControl = p.commander ? '' : `<span class="person-role-add"><select data-add-person-role aria-label="Add a role"><option value="">Add role&hellip;</option>${addableRoleOptions(p)}</select></span>`;
+  const chips = (p.role_badges || []).map(rb => `<span class="tag person-role-chip${rb.locked ? ' person-role-chip-locked' : ''}">${escapeHTML(roleLabel(rb.name))}${rb.locked ? '' : `<button type="button" class="person-role-chip-remove" data-remove-person-role="${escapeHTML(rb.name)}" aria-label="Remove ${escapeHTML(roleLabel(rb.name))} from ${escapeHTML(personName(p))}">&times;</button>`}</span>`).join('');
+  const addControl = p.commander ? '' : `<span class="person-role-add"><select data-add-person-role aria-label="Add a role"><option value="">Add a role</option>${addableRoleOptions(p)}</select></span>`;
   return `<div class="person-role-chips">${chips || '<span class="muted">No roles.</span>'}${addControl}</div>`;
 }
 const personName = p => p?.display || '(unnamed)';
@@ -555,13 +582,13 @@ function renderPeople() {
   state.people.sort((a,b) => personName(a).localeCompare(personName(b)));
   if (state.selectedPerson && !state.people.some(p => p.id === state.selectedPerson) && !state.personDirty) state.selectedPerson = null;
   const people = filteredPeople();
-  $('#people-count').textContent = `${people.length}/${state.people.length}`;
-  $('#people-list').innerHTML = people.length ? people.map(p => `<button type="button" class="person-row${p.id === state.selectedPerson ? ' is-selected' : ''}" role="option" aria-selected="${p.id === state.selectedPerson}" data-person-key="${escapeHTML(p.id)}"><span class="person-name">${escapeHTML(personName(p))}</span><span class="person-role">${escapeHTML(p.role || 'No roles')}</span><span class="person-impact">${contactsOf(p).length} contact${contactsOf(p).length === 1 ? '' : 's'}</span></button>`).join('') : `<div class="empty-state">${state.people.length ? 'No people match this search.' : 'No people yet'}</div>`;
+  $('#people-count').textContent = state.search ? `${people.length} of ${state.people.length}` : `${state.people.length}`;
+  $('#people-list').innerHTML = people.length ? people.map(p => `<button type="button" class="person-row${p.id === state.selectedPerson ? ' is-selected' : ''}" role="option" aria-selected="${p.id === state.selectedPerson}" data-person-key="${escapeHTML(p.id)}"><span class="person-name">${escapeHTML(personName(p))}</span><span class="person-role">${escapeHTML(heldRoles(p.role).map(roleLabel).join(', ') || 'No role')}</span><span class="person-impact">${contactsOf(p).length} contact${contactsOf(p).length === 1 ? '' : 's'}</span></button>`).join('') : `<div class="empty-state">${state.people.length ? 'No people match this search.' : 'No people yet'}</div>`;
   const selected = state.people.find(p => p.id === state.selectedPerson);
   const unassigned = state.unassigned.filter(c => c.kind !== 'name');
   $('#unassigned-count').textContent = unassigned.length;
   $('#switch-unassigned-count').textContent = unassigned.length;
-  $('#unassigned-list').innerHTML = unassigned.filter(c => !state.search || `${c.value} ${c.raw_value || ''} ${contactKind(c.kind).label}`.toLowerCase().includes(state.search.toLowerCase())).map(c => `<div class="unassigned-row" data-contact-id="${escapeHTML(c.id)}"><strong>${escapeHTML(c.raw_value || c.value)}</strong><span class="muted">${escapeHTML(contactKind(c.kind).label)} · ${escapeHTML(c.source || 'unknown source')} · ${escapeHTML(formatTime(c.last_seen))}</span><div class="unassigned-actions"><button type="button" class="button button-quiet" data-assign ${selected ? '' : 'disabled'}>Assign to ${escapeHTML(selected ? personName(selected) : 'selected person')}</button><button type="button" class="button button-quiet" data-new-contact-person>New person</button><button type="button" class="button button-quiet" data-delete-unassigned>Delete</button></div></div>`).join('') || '<p class="muted">No unassigned contacts.</p>';
+  $('#unassigned-list').innerHTML = unassigned.filter(c => !state.search || `${c.value} ${c.raw_value || ''} ${contactKind(c.kind).label}`.toLowerCase().includes(state.search.toLowerCase())).map(c => `<div class="unassigned-row" data-contact-id="${escapeHTML(c.id)}"><strong>${escapeHTML(c.raw_value || c.value)}</strong><span class="row-meta">${escapeHTML(contactKind(c.kind).label)}, seen ${escapeHTML(formatTime(c.last_seen))}</span><div class="unassigned-actions"><button type="button" class="button button-secondary button-small" data-assign ${selected ? '' : 'disabled'}>Assign to ${escapeHTML(selected ? personName(selected) : 'selected person')}</button><button type="button" class="button button-quiet button-small" data-new-contact-person>New person</button><button type="button" class="button button-quiet button-small is-danger" data-delete-unassigned>Delete</button></div></div>`).join('') || '<p class="empty-line">No unassigned contacts.</p>';
   $(`[data-person-key="${CSS.escape(state.selectedPerson || '')}"]`)?.scrollIntoView({block:'nearest'});
 }
 // Where Blatbot met this person and when, from auto-indexing; nothing for a record made by hand.
@@ -577,12 +604,12 @@ function renderPersonEditor() {
   state.personDirty = false;
   if (!p) { $('#person-editor').innerHTML = '<div class="empty-state">Select a person</div>'; return; }
   const contacts = contactsOf(p);
-  $('#person-editor').innerHTML = `<button type="button" class="button button-quiet" data-person-back>← People</button><h3>Person</h3><p id="person-external-change" hidden>Changed elsewhere, <button type="button" class="button button-quiet" data-reload-person>reload</button></p>
-    <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><span id="person-dirty-label" hidden>Unsaved changes</span><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button></div></form>
-    ${personMet(p)}<h3>Contacts</h3><div id="person-contacts">${contacts.length ? contacts.map(c => `<div class="person-contact" data-contact-id="${escapeHTML(c.id)}"><select aria-label="Contact type" data-contact-kind>${kindOptions(c.kind)}</select><input aria-label="Contact value" data-contact-value value="${escapeHTML(c.raw_value || c.value)}" placeholder="${escapeHTML(contactKind(c.kind).hint)}"><button class="button button-quiet" type="button" data-remove-contact>Remove</button><div class="contact-status" role="status"></div></div>`).join('') : '<p class="muted">No contacts. Add one below or assign one from the unassigned list.</p>'}</div>
-    <form id="contact-add-form" class="person-contact"><select aria-label="New contact type" name="kind">${kindOptions()}</select><input name="value" aria-label="New contact value" required placeholder="${escapeHTML((state.contactKinds || []).find(k => k.addable)?.hint || '')}"><button class="button button-quiet" type="submit">Add</button><div class="contact-status" role="status"></div></form>
-    <div class="person-access"><h3>Roles</h3>${personRoleChips(p)}<p class="person-can-text">${escapeHTML(p.can_text || '')}</p><p class="person-can-text-link"><a href="/console/roles" data-route="roles">Change what a role can do</a></p></div>
-    ${p.commander ? '<p class="person-commander-note">This person cannot be deleted or merged into another person here.</p>' : `<details class="person-advanced"><summary>Move or merge</summary><form id="contact-move-form"><label class="field">Contact<select name="contact_id" required><option value="">Choose contact</option>${contacts.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(contactKind(c.kind).label + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select></label><label class="field">To person (or Unassigned)<select name="person_id"><option value="">Unassigned</option>${personOptions(p.id)}</select></label><button class="button button-quiet" type="submit">Move</button></form><form id="person-merge-form"><label class="field">This is the same person as<select name="keep_id" required><option value="">Choose person</option>${personOptions(p.id)}</select></label><p class="muted">Their contacts move to that person. Roles and note are not combined.</p><button class="button button-quiet" type="submit">Merge into them</button></form></details><button class="button button-danger" type="button" data-delete-person>Delete person</button>`}`;
+  $('#person-editor').innerHTML = `<div class="editor-head"><button type="button" class="button button-quiet button-small" data-person-back>All people</button><h2>${escapeHTML(personName(p))}</h2></div><p id="person-external-change" hidden>Changed elsewhere. <button type="button" class="button button-secondary button-small" data-reload-person>Reload</button></p>
+    <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button><span id="person-dirty-label" class="row-meta" hidden>Unsaved changes</span></div></form>
+    ${personMet(p)}<h3>Contacts</h3><div id="person-contacts">${contacts.length ? contacts.map(c => `<div class="person-contact" data-contact-id="${escapeHTML(c.id)}"><select aria-label="Contact type" data-contact-kind>${kindOptions(c.kind)}</select><input aria-label="Contact value" data-contact-value value="${escapeHTML(c.raw_value || c.value)}" placeholder="${escapeHTML(contactKind(c.kind).hint)}"><button class="button button-quiet button-small" type="button" data-remove-contact>Remove</button><div class="contact-status" role="status"></div></div>`).join('') : '<p class="empty-line">No contacts.</p>'}</div>
+    <form id="contact-add-form" class="person-contact"><select aria-label="New contact type" name="kind">${kindOptions()}</select><input name="value" aria-label="New contact value" required placeholder="${escapeHTML((state.contactKinds || []).find(k => k.addable)?.hint || '')}"><button class="button button-secondary button-small" type="submit">Add</button><div class="contact-status" role="status"></div></form>
+    <div class="person-access"><h3>Roles</h3>${personRoleChips(p)}<p class="person-can-text">${escapeHTML(p.can_text || '')}</p><p class="person-can-text-link"><a class="button button-quiet button-small" href="/console/people/roles" data-route="roles">Edit roles</a></p></div>
+    ${p.commander ? '<p class="person-commander-note">This person cannot be deleted or merged into another person here.</p>' : `<details class="person-advanced"><summary>Move or merge</summary><form id="contact-move-form"><label class="field">Contact<select name="contact_id" required><option value="">Choose contact</option>${contacts.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(contactKind(c.kind).label + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select></label><label class="field">To person (or Unassigned)<select name="person_id"><option value="">Unassigned</option>${personOptions(p.id)}</select></label><button class="button button-secondary button-small" type="submit">Move</button></form><form id="person-merge-form"><label class="field">This is the same person as<select name="keep_id" required><option value="">Choose person</option>${personOptions(p.id)}</select></label><p class="row-meta">Their contacts move to that person. Roles and note are not combined.</p><button class="button button-secondary button-small" type="submit">Merge into them</button></form></details><div class="danger-zone"><button class="button button-secondary is-danger" type="button" data-delete-person>Delete person</button></div>`}`;
 }
 function markPersonDirty() {
   const form = $('#person-form'); if (!form || !state.editorPerson) return;
@@ -653,7 +680,7 @@ function showContactClash(host,error) {
   const contact = payload.contact || state.people.flatMap(p => p.contacts || []).find(c => c.value === $('[data-contact-value],input[name="value"]',host)?.value);
   const status = $('.contact-status',host);
   const owner = !payload.existing_person_id ? 'Unassigned' : payload.existing_person_display && payload.existing_person_display !== payload.existing_person_id ? payload.existing_person_display : personName(state.people.find(p => p.id === payload.existing_person_id));
-  status.innerHTML = `Already belongs to ${escapeHTML(owner)} <button type="button" class="button button-quiet" data-clash-move="${escapeHTML(contact?.id || '')}">Move it here</button>`;
+  status.innerHTML = `Already belongs to ${escapeHTML(owner)} <button type="button" class="button button-secondary button-small" data-clash-move="${escapeHTML(contact?.id || '')}">Move it here</button>`;
 }
 async function updateContact(row) {
   const personId = state.selectedPerson;
@@ -789,7 +816,7 @@ function roleNotesRow(role) {
   const notes = role.notes || { level: 'none', folders: [] };
   const folderList = notes.level === 'some' ? `<ul class="role-notes-folders">${folders.map(f => {
     const on = (notes.folders || []).find(x => x.scope === f.scope)?.on;
-    return `<li><label><input type="checkbox" data-role-note-folder data-scope="${escapeHTML(f.scope)}" ${on ? 'checked' : ''}> ${escapeHTML(f.label)}</label></li>`;
+    return `<li><label><input type="checkbox" data-role-note-folder data-scope="${escapeHTML(f.scope)}" ${on ? 'checked' : ''}> ${escapeHTML(sentenceCase(f.label))}</label></li>`;
   }).join('')}</ul>` : '';
   return `<div class="role-notes-row">
     <div class="role-notes-head">
@@ -810,15 +837,15 @@ function roleMembersBlock(role) {
   const held = new Set((role.members || []).map(m => m.person_id));
   const addable = (state.people || []).filter(p => !held.has(p.id));
   return `<div class="role-members">
-    <ul class="role-member-list">${(role.members || []).length ? role.members.map(m => `<li class="role-member-row"><span class="role-member-name">${escapeHTML(m.name || m.person_id)}</span>${role.locked ? '' : `<button type="button" class="role-member-remove" data-remove-role-member="${escapeHTML(m.person_id)}">Remove</button>`}</li>`).join('') : '<li class="muted">No members</li>'}</ul>
-    ${role.locked ? '' : `<div class="role-add-member"><select data-add-role-member aria-label="Add person to ${escapeHTML(role.name)}"><option value="">Add person&hellip;</option>${addable.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(personName(p))}</option>`).join('')}</select></div>`}
+    <ul class="role-member-list">${(role.members || []).length ? role.members.map(m => `<li class="role-member-row"><span class="role-member-name">${escapeHTML(m.name || m.person_id)}</span>${role.locked ? '' : `<button type="button" class="button button-quiet button-small role-member-remove" data-remove-role-member="${escapeHTML(m.person_id)}">Remove</button>`}</li>`).join('') : '<li class="muted">No members</li>'}</ul>
+    ${role.locked ? '' : `<div class="role-add-member"><select data-add-role-member aria-label="Add person to ${escapeHTML(roleLabel(role.name))}"><option value="">Add a person</option>${addable.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(personName(p))}</option>`).join('')}</select></div>`}
   </div>`;
 }
 
 function roleDeleteBlock(role) {
   if (!(role.actions || []).includes('delete')) return '';
   return `<div class="role-delete-block">
-    <button type="button" class="button button-quiet" data-delete-role-preview>Delete role</button>
+    <button type="button" class="button button-secondary is-danger" data-delete-role-preview>Delete role</button>
     <div class="role-delete-confirm" hidden></div>
   </div>`;
 }
@@ -827,16 +854,18 @@ function renderRoleRow(role) {
   const isOpen = state.roleOpen.has(role.name);
   const affects = state.roleAffectsText.get(role.name);
   const canRename = (role.actions || []).includes('rename');
-  const titleHTML = canRename
-    ? `<input class="role-name-input" data-role-name-input data-original-name="${escapeHTML(role.name)}" value="${escapeHTML(role.name)}" aria-label="Role name">`
-    : `<span class="role-name-input" aria-label="Role name">${escapeHTML(role.name)}</span>${role.locked ? '<span class="role-row-locked-badge">Built in</span>' : ''}`;
-  return `<div class="role-row" role="button" tabindex="0" aria-expanded="${isOpen}" aria-label="${escapeHTML(role.name)} details" data-role-name="${escapeHTML(role.name)}">
+  const renameHTML = canRename
+    ? `<label class="field role-rename">Name<input class="role-name-input" data-role-name-input data-original-name="${escapeHTML(role.name)}" value="${escapeHTML(role.name)}" aria-label="Role name"></label>`
+    : '';
+  return `<div class="role-row${isOpen ? ' is-open' : ''}" role="button" tabindex="0" aria-expanded="${isOpen}" aria-label="${escapeHTML(roleLabel(role.name))} details" data-role-name="${escapeHTML(role.name)}">
     <div class="role-row-head">
-      <div class="role-row-title">${titleHTML}</div>
-      <button type="button" class="role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${role.member_count} ${role.member_count === 1 ? 'member' : 'members'}${isOpen ? ' · ← Back' : ' · Open →'}</button>
+      <div class="role-row-title"><h3>${escapeHTML(roleLabel(role.name))}</h3>${role.locked ? '<span class="tag">Built in</span>' : ''}</div>
+      <span class="row-meta role-member-count">${role.member_count} ${role.member_count === 1 ? 'member' : 'members'}</span>
+      <button type="button" class="button button-secondary button-small role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${isOpen ? 'Done' : 'Edit'}</button>
     </div>
     <p class="role-row-can-text">${escapeHTML(role.can_text || '')}</p>
     ${isOpen ? `<div class="role-row-body">
+      ${renameHTML}
       ${roleMembersBlock(role)}
       ${role.locked ? '' : `<div class="role-systems">${(role.systems || []).map(roleSystemControl).join('')}</div>`}
       ${role.locked ? '' : roleNotesRow(role)}
@@ -854,7 +883,7 @@ function renderWhoCanResults() {
   host.hidden = false;
   const matches = state.whoCanMatches || [];
   host.innerHTML = matches.length
-    ? matches.map(m => `<div class="who-can-match"><div class="who-can-phrase">${escapeHTML(m.phrase)}</div>${(m.roles || []).map(r => `<div class="who-can-role-line"><strong>${escapeHTML(r.name)}</strong>: ${(r.members || []).length ? r.members.map(mm => escapeHTML(mm.name)).join(', ') : 'no members'}</div>`).join('')}</div>`).join('')
+    ? matches.map(m => `<div class="who-can-match"><div class="who-can-phrase">${escapeHTML(sentenceCase(m.phrase))}</div>${(m.roles || []).map(r => `<div class="who-can-role-line"><strong>${escapeHTML(roleLabel(r.name))}</strong>: ${(r.members || []).length ? r.members.map(mm => escapeHTML(mm.name)).join(', ') : 'no members'}</div>`).join('')}</div>`).join('')
     : '<p class="who-can-empty">No matches.</p>';
 }
 
@@ -886,16 +915,7 @@ function renderRolesPage() {
   // The locked (built-in) role, if present, is shown first -- it is a fixed
   // fact about the system, not something this list can rearrange or edit.
   const ordered = [...(summary.roles || [])].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
-  host.innerHTML = ordered.length ? ordered.map(renderRoleRow).join('') : '<div class="empty-state">No roles configured. People default to no permissions.</div>';
-  // Render the backend's own intro sentence when it sends one (field name not yet
-  // finalized upstream); otherwise keep the static fallback already in index.html --
-  // never build our own "scope list"-style copy here.
-  const introText = summary.intro_text || summary.intro || summary.page_intro;
-  const introLine = $('#roles-intro');
-  if (introLine && introText) introLine.textContent = introText;
-  const sources = summary.sources || [];
-  const sourcesLine = $('#roles-sources');
-  if (sourcesLine) sourcesLine.textContent = sources.length ? sources.map(s => `${s.label}: ${s.detail}`).join(' · ') : '';
+  host.innerHTML = ordered.length ? ordered.map(renderRoleRow).join('') : '<p class="empty-line">No roles yet.</p>';
   bindWhoCanSearch();
   renderWhoCanResults();
 }
@@ -920,7 +940,7 @@ async function renameRole(oldName, newName) {
     await post('/roles/rename', { name: oldName, new_name: newName });
     if (state.roleOpen.has(oldName)) { state.roleOpen.delete(oldName); state.roleOpen.add(newName); }
     await refreshRoles();
-    showNotice(`Renamed to ${newName}.`);
+    showNotice(`Renamed to ${roleLabel(newName)}.`);
   } catch (error) { showNotice(`Could not rename: ${error.message}`, 'error'); await refreshRoles(); }
 }
 
@@ -972,7 +992,7 @@ async function addRoleMemberByPerson(name, personId) {
     await setPersonRole(personId, name, true);
     state.roleOpen.add(name);
     await refreshRoles();
-    showNotice(`Added ${personName(p)} to ${name}.`);
+    showNotice(`Added ${personName(p)} to ${roleLabel(name)}.`);
   } catch { /* setPersonRole already reported the error */ }
 }
 
@@ -991,7 +1011,7 @@ async function createRole(name) {
     await post('/roles', { name, scopes: [], note: '' });
     state.roleOpen.add(name.toLowerCase());
     await refreshRoles();
-    showNotice(`Created ${name}.`);
+    showNotice(`Created ${roleLabel(name)}.`);
   } catch (error) { showNotice(`Could not create role: ${error.message}`, 'error'); }
 }
 
@@ -1022,7 +1042,7 @@ async function confirmDeleteRole(name) {
   try {
     await post('/roles/delete', { name });
     state.roleOpen.delete(name);
-    showNotice(`Deleted ${name}.`);
+    showNotice(`Deleted ${roleLabel(name)}.`);
     await refreshRoles();
   } catch (error) { showNotice(`Could not delete role: ${error.message}`, 'error'); }
 }
@@ -1077,7 +1097,7 @@ function inboxLaneHTML(lane) {
     <header class="lane-head"><strong>${escapeHTML(lane.label)}</strong>
       <span class="lane-counts">${busy ? `<span class="state state-running">${busy} open</span>` : ''}${lane.counts.failed ? `<span class="state state-failed">${lane.counts.failed} failed</span>` : ''}<span class="muted">${events.length} recent</span></span></header>
     <ul class="msg-list">${events.slice(0, 3).map(row).join('')}</ul>
-    ${events.length > 3 ? `<details class="lane-more"><summary>${events.length - 3} more</summary><ul class="msg-list">${events.slice(3).map(row).join('')}</ul></details>` : ''}
+    ${events.length > 3 ? `<details class="lane-more"><summary>Show ${events.length - 3} more</summary><ul class="msg-list">${events.slice(3).map(row).join('')}</ul></details>` : ''}
   </article>`;
 }
 
@@ -1104,20 +1124,22 @@ function renderMessages() {
   const rank = { failed: 0, held: 1, sending: 2, queued: 3, sent: 4 };
   const out = [...(state.outbox?.rows || [])].sort((a, b) => (rank[a.status] ?? 5) - (rank[b.status] ?? 5) || b.id - a.id);
   const timers = state.followups?.rows || [];
-  host.innerHTML = `${pulseHTML()}
+  host.innerHTML = `
     <div class="messages-grid">
+      <div class="messages-col">
       <section class="activity-panel" aria-labelledby="inbox-title">
         <header class="activity-head"><h3 id="inbox-title">Incoming</h3><span class="muted">by person</span></header>
         ${lanes.length ? `<div class="lane-list">${lanes.map(inboxLaneHTML).join('')}</div>` : '<p class="activity-empty">Nothing has come in yet.</p>'}
       </section>
+      <section class="activity-panel" aria-labelledby="followups-title">
+        <header class="activity-head"><h3 id="followups-title">Follow-ups</h3><span class="muted">${escapeHTML(state.followups?.pending ?? 0)} set</span></header>
+        ${state.followups && !state.followups.available ? '<p class="activity-empty">Follow-up timers are not available on this server.</p>'
+          : timers.length ? `<ul class="msg-list">${timers.slice(0, 30).map(followupRowHTML).join('')}</ul>` : '<p class="activity-empty">No follow-ups set.</p>'}
+      </section>
+      </div>
       <section class="activity-panel" aria-labelledby="outbox-title">
         <header class="activity-head"><h3 id="outbox-title">Outgoing</h3><span class="muted">${escapeHTML(out.length)} recent</span></header>
         ${out.length ? `<ul class="msg-list">${out.slice(0, 40).map(outboxRowHTML).join('')}</ul>` : '<p class="activity-empty">Nothing has gone out yet.</p>'}
-      </section>
-      <section class="activity-panel activity-wide" aria-labelledby="followups-title">
-        <header class="activity-head"><h3 id="followups-title">Follow-ups</h3><span class="muted">${escapeHTML(state.followups?.pending ?? 0)} set</span></header>
-        ${state.followups && !state.followups.available ? '<p class="activity-empty">Follow-up timers are not available on this server.</p>'
-          : timers.length ? `<ul class="msg-list">${timers.slice(0, 30).map(followupRowHTML).join('')}</ul>` : '<p class="activity-empty">No run has set a follow-up yet.</p>'}
       </section>
     </div>`;
   updateMessagesBadge();
@@ -1155,15 +1177,67 @@ async function refreshPulse() {
   } catch { /* An older API without these counts keeps Home as it was. */ }
 }
 
-function renderTasks() {
-  $('#tasks-list').setAttribute('aria-busy', 'false');
-  $('#tasks-list').innerHTML = state.tasks.length ? state.tasks.map(task => `<button class="task-row" type="button" data-task-id="${escapeHTML(task.id)}">
-    <span class="mono task-id">T${escapeHTML(task.id)}</span>
-    <span class="summary-cell"><span class="summary">${escapeHTML(clean(task.title) || 'Untitled task')}${cleanText(task.title).group ? `<span class="where-chip">${escapeHTML(cleanText(task.title).group)}</span>` : ''}</span>${outcomeLine(task.outcome)}</span>
-    ${statePill(task.state)}
-    <time datetime="${escapeHTML(task.updated_at || '')}">${escapeHTML(formatTime(task.updated_at))}</time>
-    <span class="participant-list">${escapeHTML(uniqueNames(task.participants || []).join(', '))}</span>
-  </button>`).join('') : '<div class="empty-state">No recent tasks.</div>';
+// ---- Activity: every task, and every run that is not part of a listed task -----------
+const ACTIVITY_STATUS_WORD = { waiting: 'Waiting on you', running: 'Running', done: 'Done', failed: 'Failed', open: 'Open' };
+const ACTIVITY_STATUS_CLASS = { waiting: 'pending', running: 'running', done: 'done', failed: 'failed', open: 'neutral' };
+const REQUEST_STATUS = { pending: 'waiting', running: 'running', done: 'done', failed: 'failed' };
+function taskStatus(task) {
+  const runs = task.runs || [];
+  if (task.state === 'waiting_aaron' || runs.some(run => run.state === 'pending')) return 'waiting';
+  if (task.state === 'running' || runs.some(run => run.state === 'running')) return 'running';
+  if (task.state === 'failed') return 'failed';
+  if (task.state === 'done' || task.state === 'closed') return 'done';
+  return 'open';
+}
+function activityRows() {
+  const inTasks = new Set(state.tasks.flatMap(task => (task.runs || []).map(run => String(run.id))));
+  const tasks = state.tasks.map(task => ({
+    kind: 'task', id: task.id, status: taskStatus(task), title: clean(task.title) || 'Untitled task',
+    where: cleanText(task.title).group, who: uniqueNames(task.participants || []).join(', '),
+    outcome: task.outcome, at: Number(task.updated_at) || 0, runs: (task.runs || []).length,
+  }));
+  const runs = state.requests.filter(request => !inTasks.has(String(request.id))).map(request => ({
+    kind: 'run', id: request.id, status: REQUEST_STATUS[request.state] || 'open',
+    title: clean(request.summary) || clean(request.original_message) || 'Run', where: cleanText(request.original_message).group,
+    who: request.sender_name || request.sender || '', outcome: request.outcome, at: Number(request.updated_at || request.created_at) || 0,
+  }));
+  return [...tasks, ...runs].sort((a, b) => b.at - a.at);
+}
+function activityRowHTML(row) {
+  const attrs = row.kind === 'task' ? `data-task-id="${escapeHTML(row.id)}"` : `data-request-detail="${escapeHTML(row.id)}"`;
+  return `<button class="row activity-row" type="button" ${attrs}>
+    <span class="state state-${ACTIVITY_STATUS_CLASS[row.status]}">${ACTIVITY_STATUS_WORD[row.status]}</span>
+    <span class="row-main"><span class="row-title">${escapeHTML(row.title)}</span><span class="row-meta">${[row.kind === 'task' ? `T${escapeHTML(row.id)}` : `Run #${escapeHTML(row.id)}`, row.where ? escapeHTML(row.where) : '', row.outcome && row.outcome.kind !== 'none' && row.outcome.text ? `<span class="outcome-${escapeHTML(row.outcome.kind)}">${escapeHTML(row.outcome.text)}</span>` : ''].filter(Boolean).join('<span class="sep"></span>')}</span></span>
+    <span class="row-who">${escapeHTML(row.who)}</span>
+    <time class="row-time" datetime="${escapeHTML(row.at ? new Date(row.at * 1000).toISOString() : '')}">${escapeHTML(formatTime(row.at))}</time>
+  </button>`;
+}
+function renderActivity() {
+  const host = $('#activity-list');
+  host.setAttribute('aria-busy', 'false');
+  const rows = activityRows();
+  const counts = { all: rows.length };
+  rows.forEach(row => { counts[row.status] = (counts[row.status] || 0) + 1; });
+  $$('[data-activity-count]').forEach(node => { node.textContent = counts[node.dataset.activityCount] || 0; });
+  $$('[data-activity-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.activityFilter === state.activityFilter)));
+  const shown = rows.filter(row => state.activityFilter === 'all' || row.status === state.activityFilter);
+  const limit = state.activityLimit || 40;
+  host.innerHTML = shown.length
+    ? shown.slice(0, limit).map(activityRowHTML).join('') + (shown.length > limit ? `<div class="row-list-more"><button type="button" class="button button-quiet" data-activity-more>Show ${Math.min(40, shown.length - limit)} more</button></div>` : '')
+    : `<p class="empty-line">${state.activityFilter === 'all' ? 'No activity yet.' : `Nothing ${ACTIVITY_STATUS_WORD[state.activityFilter].toLowerCase()}.`}</p>`;
+}
+async function refreshActivity({ throwOnError = false } = {}) {
+  try {
+    const [tasks, ...requests] = await Promise.all([api('/tasks'), ...['pending', 'running', 'done', 'failed'].map(requestState => api(`/requests?state=${requestState}`))]);
+    state.tasks = tasks;
+    state.requests = requests.flat().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    state.loaded.activity = true; state.invalidated.activity = false;
+    renderActivity();
+    updateWaitingCount();
+  } catch (error) {
+    if (throwOnError) throw error;
+    showNotice(`Activity not refreshed: ${error.message}`, 'error');
+  }
 }
 
 // A task's ledger is the list of events the API returns for it, oldest first. Each one
@@ -1172,7 +1246,7 @@ function renderLedger(task) {
   const events = Array.isArray(task.events) ? task.events : [];
   const host = $('#ledger-content');
   const runs = Array.isArray(task.runs) ? task.runs : [];
-  const runsHTML = runs.length ? `<section class="ledger-runs"><h3>Runs</h3><ul class="msg-list">${runs.map(run => `<li class="msg-row">${statePill(run.state)}<span class="msg-main"><span class="msg-meta">#${escapeHTML(run.id)}</span><span class="msg-text">${escapeHTML(clean(run.summary) || 'Run')}</span>${outcomeLine(run.outcome)}</span><time>${escapeHTML(relTime(run.created_at))}</time></li>`).join('')}</ul></section>` : '';
+  const runsHTML = runs.length ? `<section class="ledger-runs"><h3>Runs</h3><ul class="msg-list panel">${runs.map(run => `<li class="msg-row">${statePill(run.state)}<span class="msg-main"><span class="msg-meta">#${escapeHTML(run.id)}</span><span class="msg-text">${escapeHTML(clean(run.summary) || 'Run')}</span>${outcomeLine(run.outcome)}</span><time>${escapeHTML(relTime(run.created_at))}</time></li>`).join('')}</ul></section>` : '';
   if (!events.length) { host.innerHTML = runsHTML || 'No ledger entries recorded.'; return; }
   host.innerHTML = runsHTML + events.map(event => {
     const when = event.created_at ? new Date(event.created_at * 1000).toISOString() : '';
@@ -1182,14 +1256,14 @@ function renderLedger(task) {
         <time datetime="${escapeHTML(when)}">${escapeHTML(formatTime(event.created_at))}</time>
         ${event.request_id ? `<span class="mono">#${escapeHTML(event.request_id)}</span>` : ''}
       </header>
-      <div class="ledger-text">${escapeHTML(event.text || '')}</div>
+      <div class="ledger-text">${escapeHTML(cleanText(event.text).group ? `${cleanText(event.text).group}: ${clean(event.text)}` : (event.text || ''))}</div>
     </article>`;
   }).join('');
 }
 
 async function openTask(taskId) {
   const dialog = $('#task-dialog');
-  $('#ledger-id').textContent = taskId;
+  $('#ledger-id').textContent = `T${taskId}`;
   if (!dialog.open) dialog.showModal();
   const cached = state.taskLedgers.get(taskId);
   if (cached) {
@@ -1222,16 +1296,16 @@ function renderHealth() {
   const tunnel = state.health.tunnel;
   const tunnelUp = tunnel === 'up' || tunnel === true || (tunnel && tunnel.connected === true);
   const tunnelWhere = tunnel && typeof tunnel === 'object' ? (tunnel.url || tunnel.mode || '') : '';
-  $('#health-content').innerHTML = `<dl class="health-grid">
-    <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Tunnel</dt><dd class="health-status"><span class="state state-${tunnelUp ? 'done' : 'failed'}">${tunnelUp ? 'Up' : 'Down'}</span>${tunnelWhere ? `<span class="health-where">${escapeHTML(tunnelWhere)}</span>` : ''}</dd></div>
-    <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Uptime</dt><dd>${escapeHTML(formatDuration(state.health.uptime_s ?? state.health.uptime_seconds))}</dd></div>
-    <div class="health-stat" data-info-card role="button" tabindex="0"><dt>Last restart</dt><dd>${escapeHTML(formatTime(state.health.last_restart))}</dd></div>
+  const line = item => escapeHTML(typeof item === 'string' ? item : (item?.text || item?.message || JSON.stringify(item)));
+  $('#health-content').innerHTML = `<h2 class="group-title">System</h2>
+  <dl class="panel stat-strip">
+    <div class="stat"><dt>Tunnel</dt><dd><span class="state state-${tunnelUp ? 'done' : 'failed'}">${tunnelUp ? 'Up' : 'Down'}</span>${tunnelWhere ? `<span class="stat-note">${escapeHTML(String(tunnelWhere).replace(/^https?:\/\//, ''))}</span>` : ''}</dd></div>
+    <div class="stat"><dt>Uptime</dt><dd class="num">${escapeHTML(formatDuration(state.health.uptime_s ?? state.health.uptime_seconds))}</dd></div>
+    <div class="stat"><dt>Last restart</dt><dd class="num">${escapeHTML(formatTime(state.health.last_restart))}</dd></div>
+    <div class="stat"><dt>Interrupted runs</dt><dd class="num${interruptedCount ? ' is-warn' : ''}">${interruptedCount}</dd></div>
+    <div class="stat"><dt>Recent errors</dt><dd class="num${errors.length ? ' is-bad' : ''}">${errors.length}</dd></div>
   </dl>
-  ${state.health.inbox ? pulseHTML() : ''}
-  <div class="health-columns">
-    <div data-info-card role="button" tabindex="0"><h3>Interrupted runs (${interruptedCount})</h3><ul class="health-list">${interrupted.length ? interrupted.map(item => `<li>${escapeHTML(typeof item === 'string' ? item : JSON.stringify(item))}</li>`).join('') : `<li>${interruptedCount ? `${interruptedCount === 1 ? '1 run was' : `${interruptedCount} runs were`} cut off by a restart.` : 'None'}</li>`}</ul></div>
-    <div data-info-card role="button" tabindex="0"><h3>Recent errors (${errors.length})</h3><ul class="health-list">${errors.length ? errors.map(item => `<li>${escapeHTML(typeof item === 'string' ? item : JSON.stringify(item))}</li>`).join('') : '<li>None</li>'}</ul></div>
-  </div>`;
+  ${interrupted.length || errors.length ? `<ul class="panel row-list system-log">${interrupted.map(item => `<li class="row"><span class="state state-pending">Interrupted</span><span class="row-main"><span class="row-title">${line(item)}</span></span></li>`).join('')}${errors.map(item => `<li class="row"><span class="state state-failed">Error</span><span class="row-main"><span class="row-title">${line(item)}</span></span></li>`).join('')}</ul>` : ''}`;
 }
 
 async function refreshHealth({ throwOnError = false } = {}) {
@@ -1246,17 +1320,6 @@ async function refreshHealth({ throwOnError = false } = {}) {
   }
 }
 
-async function refreshTasks({ throwOnError = false } = {}) {
-  try {
-    state.tasks = await api('/tasks');
-    state.loaded.tasks = true; state.invalidated.tasks = false;
-    renderTasks();
-  }
-  catch (error) {
-    if (throwOnError) throw error;
-    showNotice(`Tasks not refreshed: ${error.message}`, 'error');
-  }
-}
 
 // ---- Schedules (second version) -------------------------------------------------
 // Every label, option list, state name and time string on this page comes from the
@@ -1324,14 +1387,15 @@ function scheduleMissingBlock(schedule) {
   if (!missing.length) return '';
   const labels = missing.map(m => escapeHTML(m.label)).join(', ');
   return `<p class="schedule-missing">It is not allowed to ${labels}.
-    <button class="button button-quiet" type="button" data-schedule-let-it>Let it ${labels}</button>
+    <button class="button button-secondary button-small" type="button" data-schedule-let-it>Let it ${labels}</button>
   </p>`;
 }
 
 function scheduleActionButtons(schedule) {
   return (schedule.actions || []).map(action => {
     const danger = action === 'stop' || action === 'reject';
-    return `<button class="button ${danger ? 'button-danger' : 'button-quiet'}" type="button" data-schedule-action="${escapeHTML(action)}">${escapeHTML(ACTION_LABELS[action] || action)}</button>`;
+    const primary = action === 'approve' || action === 'repair';
+    return `<button class="button ${primary ? 'button-primary' : 'button-secondary'}${danger ? ' is-danger' : ''} button-small" type="button" data-schedule-action="${escapeHTML(action)}">${escapeHTML(ACTION_LABELS[action] || action)}</button>`;
   }).join('');
 }
 
@@ -1341,8 +1405,8 @@ function scheduleCapabilitiesBlock(schedule) {
   // is set in the mono face. Schedules never says the word "scopes" to the owner, and
   // the console's rule is no monospace anywhere, so this renders its own chip markup.
   return labels.length
-    ? labels.map(label => `<span class="schedule-capability-chip">${escapeHTML(label)}</span>`).join('')
-    : '<span class="muted">No capabilities</span>';
+    ? labels.map(label => `<span class="tag">${escapeHTML(sentenceCase(label))}</span>`).join('')
+    : '';
 }
 
 function scheduleHistoryBlock(schedule) {
@@ -1363,7 +1427,7 @@ function scheduleHistoryBlock(schedule) {
           <td>${refused}</td>
           <td>${escapeHTML(cost)}</td>
         </tr>
-        <tr class="schedule-run-detail" data-run-detail="${escapeHTML(run.id)}" hidden><td colspan="6"><button type="button" class="button button-quiet" data-run-back>← Back</button><pre class="schedule-run-full"></pre></td></tr>`;
+        <tr class="schedule-run-detail" data-run-detail="${escapeHTML(run.id)}" hidden><td colspan="6"><pre class="schedule-run-full"></pre><button type="button" class="button button-quiet button-small" data-run-back>Hide</button></td></tr>`;
       }).join('')}</tbody>
     </table>
   </div>`;
@@ -1372,22 +1436,22 @@ function scheduleHistoryBlock(schedule) {
 function renderSchedules() {
   const host = $('#schedules-list');
   host.setAttribute('aria-busy', 'false');
-  host.innerHTML = state.schedules.length ? state.schedules.map(schedule => `<article class="schedule-card" role="button" tabindex="0" aria-label="Run history: ${escapeHTML(schedule.title)}" data-schedule-id="${escapeHTML(schedule.id)}">
+  host.innerHTML = state.schedules.length ? state.schedules.map(schedule => `<article class="schedule-card panel" data-schedule-id="${escapeHTML(schedule.id)}">
     <div class="schedule-head">
       <div><h3>${escapeHTML(schedule.title)}</h3></div>
       <span class="state state-${stateClassForSchedule(schedule)}">${escapeHTML(schedule.state_label)}</span>
     </div>
-    <p class="schedule-cadence">${escapeHTML(schedule.cadence_text)}${schedule.next_run_text ? ` &middot; <span data-next-run-text>${escapeHTML(schedule.next_run_text)}</span> <span class="muted" data-next-run-rel="${escapeHTML(schedule.next_run_in_seconds ?? '')}" data-next-run-fetched="${Date.now()}"></span>` : ''}</p>
+    <p class="schedule-cadence">${escapeHTML(sentenceCase(schedule.cadence_text))}${schedule.next_run_text ? ` &middot; <span data-next-run-text>${escapeHTML(schedule.next_run_text)}</span> <span class="muted" data-next-run-rel="${escapeHTML(schedule.next_run_in_seconds ?? '')}" data-next-run-fetched="${Date.now()}"></span>` : ''}</p>
     ${scheduleLastRunBlock(schedule)}
     ${scheduleMissingBlock(schedule)}
-    <div class="scope-row">${scheduleCapabilitiesBlock(schedule)}</div>
+    ${(schedule.capabilities || []).length ? `<div class="tag-line">${scheduleCapabilitiesBlock(schedule)}</div>` : ''}
     ${state.scheduleErrors.has(schedule.id) ? `<p class="schedule-inline-error">${escapeHTML(state.scheduleErrors.get(schedule.id))}</p>` : ''}
     <div class="schedule-action-row">
       <div class="schedule-actions">${scheduleActionButtons(schedule)}</div>
-      <button class="schedule-history-toggle" type="button" data-schedule-history="${escapeHTML(schedule.id)}" aria-expanded="${state.scheduleHistoryOpen.has(schedule.id)}">${state.scheduleHistoryOpen.has(schedule.id) ? '← Back' : 'Run history →'}</button>
+      <button class="button button-quiet button-small schedule-history-toggle" type="button" data-schedule-history="${escapeHTML(schedule.id)}" aria-expanded="${state.scheduleHistoryOpen.has(schedule.id)}">${state.scheduleHistoryOpen.has(schedule.id) ? 'Hide history' : 'Run history'}</button>
     </div>
     <div class="schedule-history-panel" data-schedule-history-panel="${escapeHTML(schedule.id)}">${state.scheduleHistoryOpen.has(schedule.id) ? scheduleHistoryBlock(schedule) : ''}</div>
-  </article>`).join('') : '<div class="empty-state">No schedules.</div>';
+  </article>`).join('') : '<div class="panel"><p class="empty-line">No schedules yet.</p></div>';
   tickScheduleClocks();
 }
 
@@ -1430,19 +1494,19 @@ function renderGroups() {
   const host = $('#groups-list');
   host.setAttribute('aria-busy', 'false');
   if (!state.groups.length) {
-    host.innerHTML = '<div class="empty-state">No group chats recorded yet.</div>';
+    host.innerHTML = '<p class="empty-line">No group chats yet.</p>';
     return;
   }
-  host.innerHTML = state.groups.map(g => `<div class="group-row" data-info-card role="button" tabindex="0" data-chat-id="${escapeHTML(g.chat_id)}">
+  host.innerHTML = state.groups.map(g => `<div class="row group-row" data-chat-id="${escapeHTML(g.chat_id)}">
     <div class="group-row-main">
       <div class="group-row-title">${escapeHTML(g.title)}</div>
-      <div class="group-row-meta">${escapeHTML(g.channel)} &middot; ${g.member_count} member${g.member_count === 1 ? '' : 's'}</div>
+      <div class="row-meta">${escapeHTML(sentenceCase(g.channel))}, ${g.member_count} member${g.member_count === 1 ? '' : 's'}</div>
     </div>
     <label class="group-row-mode">
       <span class="visually-hidden">Response mode for ${escapeHTML(g.title)}</span>
       <select data-group-mode aria-label="Response mode for ${escapeHTML(g.title)}">${GROUP_MODE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === g.response_mode ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
     </label>
-    <span class="group-row-save-state" role="status"></span>
+    <span class="group-row-save-state row-meta" role="status"></span>
   </div>`).join('');
 }
 
@@ -1715,7 +1779,8 @@ function settingControl(setting) {
     return `<div class="number-control"><input type="range" data-setting-control data-setting-kind="number"${bounds} value="${escapeHTML(value)}" aria-label="${escapeHTML(setting.label)} slider"><input type="number" data-setting-control data-setting-kind="number"${bounds} value="${escapeHTML(value)}" aria-label="${escapeHTML(setting.label)} value"></div>`;
   }
   if (setting.kind === 'choice') {
-    return `<select data-setting-control data-setting-kind="choice" aria-label="${escapeHTML(setting.label)}">${(setting.choices || []).map(choice => `<option value="${escapeHTML(choice)}" ${choice === value ? 'selected' : ''}>${escapeHTML(choice)}</option>`).join('')}</select>`;
+    const words = CHOICE_WORDS[setting.name] || {};
+    return `<select data-setting-control data-setting-kind="choice" aria-label="${escapeHTML(setting.label)}">${(setting.choices || []).map(choice => `<option value="${escapeHTML(choice)}" ${choice === value ? 'selected' : ''}>${escapeHTML(words[choice] || sentenceCase(choice))}</option>`).join('')}</select>`;
   }
   return `<textarea data-setting-control data-setting-kind="text" rows="1" aria-label="${escapeHTML(setting.label)}">${escapeHTML(value ?? '')}</textarea>`;
 }
@@ -1733,28 +1798,37 @@ function renderSettings() {
     map.get(group).push(setting);
     return map;
   }, new Map());
-  host.innerHTML = [...groups.entries()].map(([group, settings], groupIndex) => `<section class="settings-group" aria-labelledby="settings-group-${groupIndex}">
-    <h3 id="settings-group-${groupIndex}">${escapeHTML(group)}</h3>
-    <div class="settings-panel">${settings.map(setting => {
-      const serious = isSeriousSetting(setting);
-      const status = state.settingStatus[setting.name];
-      return `<div data-info-card role="button" tabindex="0" class="setting-row${serious ? ' is-serious' : ''}" data-setting-name="${escapeHTML(setting.name)}">
+  const SOURCE_WORDS = { console: 'Changed here', environment: 'Set on the server' };
+  const rowHTML = setting => {
+    const serious = isSeriousSetting(setting);
+    const status = state.settingStatus[setting.name];
+    const changed = setting.source === 'console' || setting.value !== setting.default;
+    return `<div class="setting-row${serious ? ' is-serious' : ''}" data-setting-name="${escapeHTML(setting.name)}">
         <div class="setting-copy">
-          <div class="setting-label">${escapeHTML(setting.label)}${serious ? '<span class="serious-mark">Serious</span>' : ''}</div>
-          <div class="setting-help">${escapeHTML(setting.help || '')}</div>
-          <code class="setting-name">${escapeHTML(setting.name)}</code>
+          <div class="setting-label" title="${escapeHTML(setting.name)}">${escapeHTML(setting.label)}${serious ? '<span class="tag tag-warn">Serious</span>' : ''}</div>
+          <p class="setting-help">${escapeHTML(setting.help || '')}</p>
         </div>
         <div class="setting-value">
           ${settingControl(setting)}
           <div class="setting-meta">
-            <span class="setting-source source-${escapeHTML(setting.source)}">${escapeHTML(setting.source)}</span>
-            ${setting.source === 'console' || setting.value !== setting.default ? '<button class="button button-danger setting-reset" type="button" data-reset-setting>Reset</button>' : ''}
+            ${SOURCE_WORDS[setting.source] ? `<span class="row-meta">${SOURCE_WORDS[setting.source]}</span>` : ''}
+            ${changed ? '<button class="button button-quiet button-small setting-reset" type="button" data-reset-setting>Reset</button>' : ''}
             <span class="setting-save-state${status?.type === 'error' ? ' is-error' : ''}" role="status">${escapeHTML(status?.text || '')}</span>
           </div>
         </div>
       </div>`;
-    }).join('')}</div>
+  };
+  const groupHTML = (prefix, entries) => entries.map(([group, settings], groupIndex) => `<section class="settings-group" aria-labelledby="${prefix}-${groupIndex}">
+    <h2 class="group-title" id="${prefix}-${groupIndex}">${escapeHTML(group)}</h2>
+    <div class="panel settings-panel">${settings.map(rowHTML).join('')}</div>
   </section>`).join('');
+  const split = advanced => [...groups.entries()].map(([group, settings]) => [group, settings.filter(setting => ADVANCED_SETTINGS.has(setting.name) === advanced)]).filter(([, settings]) => settings.length);
+  host.innerHTML = groupHTML('settings-group', split(false))
+    + `<details class="advanced-settings"${state.advancedOpen ? ' open' : ''}><summary><span>Advanced</span><span class="row-meta">Switches for finished changes and engine internals</span></summary>
+      ${groupHTML('settings-advanced', split(true))}
+      <p class="advanced-link"><a class="button button-quiet button-small" href="${VIEW_PATHS.scopes}" data-route="scopes">Every permission, in full</a></p>
+    </details>`;
+  $('.advanced-settings', host)?.addEventListener('toggle', event => { state.advancedOpen = event.target.open; });
   $$('textarea[data-setting-control]', host).forEach(growSettingTextarea);
 }
 
@@ -1821,7 +1895,7 @@ function connectEvents() {
     invalidateHome();
   });
   source.addEventListener('people.changed', handlePeopleEvent);
-  source.addEventListener('health.changed', () => { invalidateView('health', refreshHealth); invalidateHome(); });
+  source.addEventListener('health.changed', () => { invalidateView('settings', refreshHealth); invalidateHome(); });
   source.addEventListener('settings.changed', () => invalidateView('settings', refreshSettings));
   source.addEventListener('schedules.changed', () => invalidateHome());
   source.onerror = async () => {
@@ -1845,32 +1919,34 @@ function invalidateHome() {
 }
 
 function handleRequestEvent() {
-  state.invalidated.requests = true;
+  invalidateView('activity', refreshActivity);
   invalidateHome();
-  if (state.activeView === 'requests') refreshRequests();
-  else refreshWaitingCount().catch(error => showNotice(`Waiting count not refreshed: ${error.message}`, 'error'));
+  if (state.activeView !== 'home') refreshWaitingCount().catch(error => showNotice(`Waiting count not refreshed: ${error.message}`, 'error'));
 }
 
 function setStreamState(streamState) {
   state.streamState = streamState;
   const dot = $('#stream-dot');
   dot.className = `stream-dot${streamState === 'live' ? ' is-live' : streamState === 'connecting' ? ' is-connecting' : ''}`;
-  $('#stream-label').textContent = streamState;
-  if (state.activeView === 'home' && state.overview) renderHome();
+  $('#stream-label').textContent = sentenceCase(streamState);
 }
 
 function applyRoute({ replaceUnknown = false } = {}) {
+  const hashTarget = oldHashTarget();
+  if (hashTarget) history.replaceState(null, '', hashTarget);
   const route = routeFromPath();
-  if (route.unknown && replaceUnknown) history.replaceState(null, '', VIEW_PATHS.home);
+  if (route.redirect) history.replaceState(null, '', route.redirect);
+  else if (route.unknown && replaceUnknown) history.replaceState(null, '', VIEW_PATHS.home);
   state.activeView = route.view;
   state.taskId = route.taskId;
   $$('[data-view]').forEach(section => { section.hidden = section.dataset.view !== route.view; });
+  const menuView = NAV_PARENT[route.view] || route.view;
   $$('nav [data-route]').forEach(link => {
-    if (link.dataset.route === route.view) link.setAttribute('aria-current', 'page');
+    if (link.dataset.route === menuView) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
-  $('#mobile-route').value = VIEW_PATHS[route.view];
-  document.title = `${route.view[0].toUpperCase()}${route.view.slice(1)} · Blatbot console`;
+  $$('.tabs [data-route]').forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.route === route.view)));
+  document.title = `${VIEW_TITLES[route.view] || 'Console'} · Blatbot`;
   const taskDialog = $('#task-dialog');
   if (!route.taskId && taskDialog.open) taskDialog.close();
   window.scrollTo({ top: 0, behavior: 'auto' });
@@ -1891,7 +1967,7 @@ function moveWaiting(direction) {
   const waiting = pendingRequests();
   if (!waiting.length) return;
   state.selectedWaiting = (state.selectedWaiting + direction + waiting.length) % waiting.length;
-  renderRequests();
+  renderHome();
   const selected = $(`[data-waiting-index="${state.selectedWaiting}"]`);
   selected?.focus({ preventScroll: true });
   selected?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -1922,10 +1998,11 @@ document.addEventListener('click', event => {
   if (editButton) {
     const note = editButton.closest('.request-card').querySelector('.decision-note');
     note.hidden = !note.hidden;
+    editButton.setAttribute('aria-expanded', String(!note.hidden));
     if (!note.hidden) $('textarea', note).focus();
   }
   const personButton = event.target.closest('[data-person-key]');
-  if (personButton) { state.selectedPerson = personButton.dataset.personKey; state.personDirty = false; renderPeople(); renderPersonEditor(); $('#person-editor').scrollIntoView({ block: 'start' }); $('[data-person-back]')?.focus({ preventScroll: true }); }
+  if (personButton) { state.selectedPerson = personButton.dataset.personKey; state.personDirty = false; renderPeople(); renderPersonEditor(); if (matchMedia('(max-width: 760px)').matches) window.scrollTo({ top: 0 }); $('[data-person-back]')?.focus({ preventScroll: true }); }
   const toggleRole = event.target.closest('[data-toggle-role]');
   if (toggleRole) {
     const name = toggleRole.closest('[data-role-name]').dataset.roleName;
@@ -1943,7 +2020,7 @@ document.addEventListener('click', event => {
   const cancelDeleteRoleButton = event.target.closest('[data-cancel-delete-role]');
   if (cancelDeleteRoleButton) hideRoleDeletePreview(cancelDeleteRoleButton.closest('[data-role-name]').dataset.roleName);
   const taskButton = event.target.closest('[data-task-id]');
-  if (taskButton) navigate(`/console/tasks/${encodeURIComponent(taskButton.dataset.taskId)}`);
+  if (taskButton) navigate(`${VIEW_PATHS.activity}/${encodeURIComponent(taskButton.dataset.taskId)}`);
   const scheduleActionButton = event.target.closest('[data-schedule-action]');
   if (scheduleActionButton) {
     const id = Number(scheduleActionButton.closest('[data-schedule-id]').dataset.scheduleId);
@@ -2090,7 +2167,7 @@ document.addEventListener('keydown', event => {
   if (event.key === '?' && !isTypingTarget(event.target)) { event.preventDefault(); $('#shortcuts-dialog').showModal(); return; }
   if (event.key === '/' && state.activeView === 'people' && !isTypingTarget(event.target)) { event.preventDefault(); $('#people-search').focus(); return; }
   if (isTypingTarget(event.target) || $('dialog[open]')) return;
-  if (state.activeView !== 'requests') return;
+  if (state.activeView !== 'home') return;
   if (event.key === 'j') { event.preventDefault(); moveWaiting(1); }
   if (event.key === 'k') { event.preventDefault(); moveWaiting(-1); }
   if ((event.key === 'y' || event.key === 'n') && pendingRequests().length) {
@@ -2171,27 +2248,31 @@ document.addEventListener('change', event => {
   if (!event.target.matches('#schedule-form [name=cadence_kind], #repair-form [name=cadence_kind]')) return;
   $$('.cadence-fields', event.target.form).forEach(el => { el.hidden = el.dataset.cadenceFields !== event.target.value; });
 });
-$$('[data-request-filter]').forEach(button => button.addEventListener('click', () => {
-  state.requestFilter = button.dataset.requestFilter;
-  $$('[data-request-filter]').forEach(item => item.classList.toggle('is-active', item === button));
-  renderRequests();
+$$('[data-activity-filter]').forEach(button => button.addEventListener('click', () => {
+  state.activityFilter = button.dataset.activityFilter;
+  state.activityLimit = 40;
+  renderActivity();
 }));
-$('#mobile-route').addEventListener('change', event => navigate(event.target.value));
+document.addEventListener('click', event => {
+  if (!event.target.closest('[data-activity-more]')) return;
+  state.activityLimit = (state.activityLimit || 40) + 40;
+  renderActivity();
+});
 $('#retry-all').addEventListener('click', () => loadSnapshot());
-$('#refresh-tasks').addEventListener('click', refreshTasks);
+$('#refresh-activity').addEventListener('click', () => refreshActivity());
 $('#refresh-groups').addEventListener('click', () => refreshGroups());
-$('#refresh-health').addEventListener('click', refreshHealth);
+$('#refresh-health').addEventListener('click', () => { refreshHealth(); refreshSettings(); });
 $('#refresh-messages').addEventListener('click', () => refreshMessages());
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => {
   if (event.target === dialog) dialog.close();
 }));
 $('#task-dialog').addEventListener('close', () => {
-  if (state.taskId) navigate(VIEW_PATHS.tasks, { replace: true });
+  if (state.taskId) navigate(VIEW_PATHS.activity, { replace: true });
 });
 window.addEventListener('popstate', applyRoute);
 
 applyRoute({ replaceUnknown: true });
-if (state.activeView !== 'requests') refreshWaitingCount().catch(error => showNotice(`Waiting count not loaded: ${error.message}`, 'error'));
+if (state.activeView !== 'home') refreshWaitingCount().catch(error => showNotice(`Waiting count not loaded: ${error.message}`, 'error'));
 connectEvents();
 
 // Blatbot's picture comes from the backend, which fetches it from its Inkbox identity.
@@ -2203,7 +2284,7 @@ function openCardDetail(title, text) {
   $('#card-detail-body').textContent = text;
   $('#card-detail-dialog').showModal();
 }
-const cardSelector = '[data-card-route], [data-request-detail], .schedule-card, .role-row, [data-info-card]';
+const cardSelector = '[data-request-detail], .role-row';
 document.addEventListener('click', event => {
   if (event.target.closest('[data-person-back]')) {
     if (state.personDirty && !confirm('Discard unsaved changes?')) return;
@@ -2220,12 +2301,12 @@ document.addEventListener('click', event => {
     return;
   }
   const card = event.target.closest(cardSelector);
-  if (!card || event.target.closest('button, a, input, textarea, select, label, summary, .schedule-history-panel, .role-row-body')) return;
+  if (!card || event.target.closest('a, input, textarea, select, label, summary, .role-row-body') || (event.target.closest('button') && event.target.closest('button') !== card)) return;
   if (card.dataset.cardRoute) {
     navigate(VIEW_PATHS[card.dataset.cardRoute]);
   } else if (card.dataset.requestDetail) {
     const request = state.requests.find(r => String(r.id) === card.dataset.requestDetail);
-    if (request) openCardDetail(request.summary || 'Request', [request.sender_name || request.sender, stateWord(request.state), request.outcome?.text, clean(request.original_message), request.result_line || request.final_status].filter(Boolean).join('\n\n'));
+    if (request) openCardDetail(clean(request.summary) || 'Run', [`#${request.id}, ${request.sender_name || request.sender || ''}, ${formatTime(request.created_at)}`, stateWord(request.state), request.outcome?.text, clean(request.original_message), clean(request.result)].filter(Boolean).join('\n\n'));
   } else if (card.matches('.schedule-card')) {
     card.querySelector('[data-schedule-history]').click();
   } else if (card.matches('.role-row')) {

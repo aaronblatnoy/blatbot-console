@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#00010d">
+  <meta name="theme-color" content="#0b0f1a">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=activity20261116">
+  <link rel="stylesheet" href="/static/console.css?v=slim20261116">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -15,39 +15,18 @@
 
   <header class="topbar">
     <div class="identity">
-<a class="brand-avatar-link" href="/console/" data-route="home" aria-label="Blatbot console home"><img class="brand-avatar" alt="" width="64" height="64"><span class="wordmark">BLATBOT</span></a>
+      <a class="brand-avatar-link" href="/console/" data-route="home" aria-label="Blatbot console home"><img class="brand-avatar" alt="" width="64" height="64"><span class="wordmark">BLATBOT</span></a>
     </div>
-    <nav aria-label="Console sections">
-      <a href="/console/" data-route="home" aria-current="page">Home</a>
-      <a href="/console/requests" data-route="requests">Requests <span id="nav-waiting-count" class="nav-count" hidden></span></a>
-      <a href="/console/messages" data-route="messages">Messages <span id="nav-messages-count" class="nav-count nav-count-alert" hidden></span></a>
-      <a href="/console/people" data-route="people">People</a>
-      <a href="/console/roles" data-route="roles">Roles</a>
-      <a href="/console/tasks" data-route="tasks">Tasks</a>
-      <a href="/console/schedules" data-route="schedules">Schedules</a>
-      <a href="/console/groups" data-route="groups">Group chats</a>
-      <a href="/console/health" data-route="health">Health</a>
-      <a href="/console/settings" data-route="settings">Settings</a>
+    <nav class="main-nav" aria-label="Console sections">
+      <a href="/console/" data-route="home" aria-current="page"><span>Home</span><span id="nav-waiting-count" class="nav-count" hidden></span></a>
+      <a href="/console/activity" data-route="activity"><span>Activity</span></a>
+      <a href="/console/messages" data-route="messages"><span>Messages</span><span id="nav-messages-count" class="nav-count nav-count-alert" hidden></span></a>
+      <a href="/console/schedules" data-route="schedules"><span>Schedules</span></a>
+      <a href="/console/people" data-route="people"><span>People</span></a>
+      <a href="/console/settings" data-route="settings"><span>Settings</span></a>
     </nav>
-    <label class="mobile-nav">
-      <span class="visually-hidden">Console page</span>
-      <select id="mobile-route" aria-label="Console page">
-        <option value="/console/">Home</option>
-        <option value="/console/requests">Requests</option>
-        <option value="/console/messages">Messages</option>
-        <option value="/console/people">People</option>
-        <option value="/console/roles">Roles</option>
-        <option value="/console/tasks">Tasks</option>
-        <option value="/console/schedules">Schedules</option>
-        <option value="/console/groups">Group chats</option>
-        <option value="/console/health">Health</option>
-        <option value="/console/settings">Settings</option>
-      </select>
-      <span id="mobile-request-status" class="mobile-request-status" hidden>Req <span id="mobile-waiting-count" class="nav-count"></span></span>
-    </label>
     <div class="connection" aria-live="polite">
-      <span id="stream-dot" class="stream-dot is-connecting"></span>
-      <span id="stream-label">connecting</span>
+      <a class="connection-link" href="/console/settings" data-route="settings" title="System status"><span id="stream-dot" class="stream-dot is-connecting"></span><span id="stream-label">Connecting</span></a>
       <button class="key-button" type="button" data-open-shortcuts aria-label="Show keyboard shortcuts">?</button>
     </div>
   </header>
@@ -57,7 +36,7 @@
       <strong>Gate is starting.</strong>
       <span id="startup-detail">The console will retry when the API is ready.</span>
     </div>
-    <button id="retry-all" class="button button-quiet" type="button">Retry now</button>
+    <button id="retry-all" class="button button-secondary" type="button">Retry now</button>
   </div>
 
   <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
@@ -65,136 +44,41 @@
   <main id="main">
     <section id="home" class="section home-section" data-view="home" aria-labelledby="home-title">
       <div class="section-heading">
-        <div>
-          <h1 id="home-title">Home</h1>
-        </div>
+        <h1 id="home-title">Home</h1>
       </div>
       <div id="home-content" class="home-grid" aria-live="polite" aria-busy="true"></div>
     </section>
 
-    <section id="requests" class="section waiting-section" data-view="requests" aria-labelledby="requests-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
-      <div class="section-heading waiting-heading">
-        <div>
-          <h2 id="requests-title">Waiting on you</h2>
-          <p id="waiting-summary" class="section-summary">Loading requests…</p>
+    <section id="activity" class="section" data-view="activity" aria-labelledby="activity-title" hidden>
+      <div class="section-heading">
+        <h1 id="activity-title">Activity</h1>
+        <div class="heading-actions">
+          <button id="refresh-activity" class="button button-quiet" type="button">Refresh</button>
         </div>
-        <div id="waiting-count" class="big-count" aria-hidden="true">—</div>
       </div>
-      <div id="waiting-list" class="waiting-list" aria-live="polite" aria-busy="true"></div>
-
-      <details class="history-block">
-        <summary>
-          <span>Request history</span>
-          <span id="history-counts" class="summary-meta">loading</span>
-        </summary>
-        <div class="filter-bar" role="group" aria-label="Filter requests">
-          <button class="filter is-active" type="button" data-request-filter="all">All</button>
-          <button class="filter" type="button" data-request-filter="running">Running</button>
-          <button class="filter" type="button" data-request-filter="done">Done</button>
-          <button class="filter" type="button" data-request-filter="failed">Failed</button>
-        </div>
-        <div id="request-history" class="request-history"></div>
-      </details>
+      <div class="segmented" role="group" aria-label="Filter activity">
+        <button type="button" data-activity-filter="all" aria-pressed="true">All <span class="seg-count" data-activity-count="all"></span></button>
+        <button type="button" data-activity-filter="waiting" aria-pressed="false">Waiting <span class="seg-count" data-activity-count="waiting"></span></button>
+        <button type="button" data-activity-filter="running" aria-pressed="false">Running <span class="seg-count" data-activity-count="running"></span></button>
+        <button type="button" data-activity-filter="done" aria-pressed="false">Done <span class="seg-count" data-activity-count="done"></span></button>
+        <button type="button" data-activity-filter="failed" aria-pressed="false">Failed <span class="seg-count" data-activity-count="failed"></span></button>
+      </div>
+      <div id="activity-list" class="panel row-list activity-list" aria-live="polite" aria-busy="true"></div>
     </section>
 
     <section id="messages" class="section messages-section" data-view="messages" aria-labelledby="messages-title" hidden>
       <div class="section-heading">
-        <div>
-          <h2 id="messages-title">Messages</h2>
+        <h1 id="messages-title">Messages</h1>
+        <div class="heading-actions">
+          <button id="refresh-messages" class="button button-quiet" type="button">Refresh</button>
         </div>
-        <button id="refresh-messages" class="button button-quiet" type="button">Refresh</button>
       </div>
       <div id="messages-content" class="messages-content" aria-live="polite" aria-busy="true"></div>
     </section>
 
-    <section id="people" class="section" data-view="people" aria-labelledby="people-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
-      <div class="section-heading">
-        <div>
-          <h2 id="people-title">People</h2>
-        </div>
-        <div class="heading-actions">
-          <label class="search-field">
-            <span class="visually-hidden">Search people and scopes</span>
-            <span aria-hidden="true">/</span>
-            <input id="people-search" type="search" placeholder="Find person or scope" autocomplete="off">
-          </label>
-          <button id="sync-people" class="button button-quiet" type="button">Refresh from Inkbox</button>
-          <button id="add-person" class="button button-primary" type="button">Add person</button>
-        </div>
-      </div>
-      
-      <div class="people-layout">
-        <div class="people-pane">
-          <div class="people-switch" role="group" aria-label="People list">
-            <button class="button button-quiet" type="button" data-list-mode="people" aria-pressed="true">People</button>
-            <button class="button button-quiet" type="button" data-list-mode="unassigned" aria-pressed="false">Unassigned (<span id="switch-unassigned-count">0</span>)</button>
-          </div>
-          <div id="people-records">
-            <div class="pane-label"><span>People</span><span id="people-count">—</span></div>
-            <div id="people-list" class="people-list" role="listbox" aria-label="People"></div>
-          </div>
-          <details id="unassigned-block">
-            <summary>Unassigned contacts (<span id="unassigned-count">0</span>)</summary>
-            <div id="unassigned-list"></div>
-          </details>
-        </div>
-        <div id="person-editor" class="editor-pane">
-          <div class="empty-state">Select a person</div>
-        </div>
-      </div>
-    </section>
-
-    <section id="roles" class="section" data-view="roles" aria-labelledby="roles-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
-      <div class="section-heading">
-        <div>
-          <h2 id="roles-title">Who can do what</h2>
-          <p id="roles-intro" class="section-summary">Choose a role to manage access.</p>
-        </div>
-        <div class="heading-actions">
-          <form id="new-role-form" class="new-role-form" autocomplete="off">
-            <input name="name" class="new-role-name" placeholder="New role name" aria-label="New role name" required>
-            <button class="button button-quiet" type="submit">New role</button>
-          </form>
-        </div>
-      </div>
-      <label class="search-field roles-who-can-field">
-        <span class="visually-hidden">Who can</span>
-        <span aria-hidden="true">/</span>
-        <input id="who-can-search" type="search" placeholder="Who can ... (for example send email)" autocomplete="off">
-      </label>
-      <div id="who-can-results" class="who-can-results" hidden></div>
-      <div id="roles-list" class="roles-list" aria-busy="true"></div>
-      <p id="roles-sources" class="home-sources"></p>
-    </section>
-
-    <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
-      <div class="section-heading">
-        <div><h2 id="scopes-title">Scopes</h2></div>
-      </div>
-      <div id="scopes-breakdown" class="roles-list" aria-live="polite" aria-busy="true"></div>
-    </section>
-
-    <section id="tasks" class="section" data-view="tasks" aria-labelledby="tasks-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
-      <div class="section-heading">
-        <div>
-          <h2 id="tasks-title">Tasks</h2>
-        </div>
-        <button id="refresh-tasks" class="button button-quiet" type="button">Refresh</button>
-      </div>
-      <div id="tasks-list" class="task-list" aria-busy="true"></div>
-    </section>
-
     <section id="schedules" class="section" data-view="schedules" aria-labelledby="schedules-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
-        <div>
-          <h2 id="schedules-title">Schedules</h2>
-        </div>
+        <h1 id="schedules-title">Schedules</h1>
         <div class="heading-actions">
           <button id="add-schedule" class="button button-primary" type="button">New schedule</button>
         </div>
@@ -202,42 +86,105 @@
       <div id="schedules-list" class="schedule-list" aria-live="polite" aria-busy="true"></div>
     </section>
 
-    <section id="groups" class="section" data-view="groups" aria-labelledby="groups-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
+    <section id="people" class="section" data-view="people" aria-labelledby="people-title" hidden>
       <div class="section-heading">
-        <div>
-          <h2 id="groups-title">Group chats</h2>
+        <h1 id="people-title">People</h1>
+        <div class="heading-actions">
+          <label class="search-field">
+            <span class="visually-hidden">Search people and scopes</span>
+            <input id="people-search" type="search" placeholder="Find a person" autocomplete="off">
+          </label>
+          <button id="sync-people" class="button button-secondary" type="button">Refresh from Inkbox</button>
+          <button id="add-person" class="button button-primary" type="button">Add person</button>
         </div>
-        <button id="refresh-groups" class="button button-quiet" type="button">Refresh</button>
       </div>
-      <div id="groups-list" class="groups-list" aria-live="polite" aria-busy="true"></div>
+      <div class="tabs" role="tablist" aria-label="People sections">
+        <a href="/console/people" data-route="people" role="tab" aria-selected="true">People</a>
+        <a href="/console/people/roles" data-route="roles" role="tab" aria-selected="false">Roles</a>
+        <a href="/console/people/groups" data-route="groups" role="tab" aria-selected="false">Group chats</a>
+      </div>
+      <div class="people-layout">
+        <div class="people-pane panel">
+          <div class="people-switch" role="group" aria-label="People list">
+            <button type="button" data-list-mode="people" aria-pressed="true">People <span id="people-count" class="seg-count">0</span></button>
+            <button type="button" data-list-mode="unassigned" aria-pressed="false">Unassigned <span id="switch-unassigned-count" class="seg-count">0</span></button>
+          </div>
+          <div id="people-records">
+            <div id="people-list" class="people-list" role="listbox" aria-label="People"></div>
+          </div>
+          <div id="unassigned-block" class="unassigned-block">
+            <div id="unassigned-list"></div>
+            <span id="unassigned-count" hidden>0</span>
+          </div>
+        </div>
+        <div id="person-editor" class="editor-pane panel">
+          <div class="empty-state">Select a person</div>
+        </div>
+      </div>
     </section>
 
-    <section id="health" class="section health-section" data-view="health" aria-labelledby="health-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
+    <section id="roles" class="section" data-view="roles" aria-labelledby="roles-title" hidden>
       <div class="section-heading">
-        <div>
-          <h2 id="health-title">Health</h2>
+        <h1 id="roles-title">People</h1>
+        <div class="heading-actions">
+          <label class="search-field">
+            <span class="visually-hidden">Who can</span>
+            <input id="who-can-search" type="search" placeholder="Who can send email" autocomplete="off">
+          </label>
+          <form id="new-role-form" class="new-role-form" autocomplete="off">
+            <input name="name" class="new-role-name" placeholder="New role name" aria-label="New role name" required>
+            <button class="button button-primary" type="submit">Add role</button>
+          </form>
         </div>
-        <button id="refresh-health" class="button button-quiet" type="button">Refresh</button>
       </div>
-      <div id="health-content" aria-busy="true"></div>
+      <div class="tabs" role="tablist" aria-label="People sections">
+        <a href="/console/people" data-route="people" role="tab" aria-selected="false">People</a>
+        <a href="/console/people/roles" data-route="roles" role="tab" aria-selected="true">Roles</a>
+        <a href="/console/people/groups" data-route="groups" role="tab" aria-selected="false">Group chats</a>
+      </div>
+      <div id="who-can-results" class="who-can-results panel" hidden></div>
+      <div id="roles-list" class="panel row-list roles-list" aria-busy="true"></div>
+    </section>
+
+    <section id="groups" class="section" data-view="groups" aria-labelledby="groups-title" hidden>
+      <div class="section-heading">
+        <h1 id="groups-title">People</h1>
+        <div class="heading-actions">
+          <button id="refresh-groups" class="button button-quiet" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="tabs" role="tablist" aria-label="People sections">
+        <a href="/console/people" data-route="people" role="tab" aria-selected="false">People</a>
+        <a href="/console/people/roles" data-route="roles" role="tab" aria-selected="false">Roles</a>
+        <a href="/console/people/groups" data-route="groups" role="tab" aria-selected="true">Group chats</a>
+      </div>
+      <div id="groups-list" class="panel row-list groups-list" aria-live="polite" aria-busy="true"></div>
     </section>
 
     <section id="settings" class="section" data-view="settings" aria-labelledby="settings-title" hidden>
-      <a class="page-back" href="/console/" data-route="home">← Home</a>
       <div class="section-heading">
-        <div>
-          <h2 id="settings-title">Settings</h2>
+        <h1 id="settings-title">Settings</h1>
+        <div class="heading-actions">
+          <button id="refresh-health" class="button button-quiet" type="button">Refresh</button>
         </div>
       </div>
+      <div id="health-content" class="system-block" aria-busy="true"></div>
       <div id="settings-list" class="settings-list" aria-live="polite" aria-busy="true"></div>
-      <p class="settings-scopes-link"><a href="/console/scopes" data-route="scopes">Technical view of every permission</a></p>
+    </section>
+
+    <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
+      <div class="section-heading">
+        <h1 id="scopes-title">Every permission</h1>
+        <div class="heading-actions">
+          <a class="button button-quiet" href="/console/settings" data-route="settings">Back to settings</a>
+        </div>
+      </div>
+      <div id="scopes-breakdown" class="panel scopes-panel" aria-live="polite" aria-busy="true"></div>
     </section>
   </main>
 
   <dialog id="card-detail-dialog" class="ledger-dialog" aria-labelledby="card-detail-title">
-    <div class="dialog-head"><h2 id="card-detail-title">Details</h2><button class="close-button" type="button" data-close-dialog="card-detail-dialog">← Back</button></div>
+    <div class="dialog-head"><h2 id="card-detail-title">Details</h2><button class="close-button" type="button" data-close-dialog="card-detail-dialog">Close</button></div>
     <div id="card-detail-body" class="card-detail-body"></div>
   </dialog>
 
@@ -247,7 +194,7 @@
         <span id="ledger-id" class="mono muted"></span>
         <h2 id="ledger-title">Task ledger</h2>
       </div>
-      <button class="close-button" type="button" data-close-dialog="task-dialog" aria-label="Close ledger">← Back</button>
+      <button class="close-button" type="button" data-close-dialog="task-dialog" aria-label="Close ledger">Close</button>
     </div>
     <div id="ledger-content" class="ledger-content"></div>
   </dialog>
@@ -256,7 +203,7 @@
     <form id="schedule-form">
       <div class="dialog-head">
         <h2 id="schedule-dialog-title">New schedule</h2>
-        <button class="close-button" type="button" data-close-dialog="schedule-dialog">← Back</button>
+        <button class="close-button" type="button" data-close-dialog="schedule-dialog">Close</button>
       </div>
       <input id="schedule-id" type="hidden">
       <label>What should it do<textarea id="schedule-prompt" name="prompt" rows="4" required></textarea></label>
@@ -272,7 +219,7 @@
       <fieldset><legend>Tell me</legend><div id="schedule-report-options"></div></fieldset>
       <label class="schedule-until-field">Until (optional)<input id="schedule-until" name="until" type="date"></label>
       <fieldset><legend>Capabilities</legend><div id="schedule-scopes" class="scope-options"></div></fieldset>
-      <div class="form-actions"><button class="button button-primary" type="submit">Save</button></div>
+      <div class="form-actions"><button class="button button-primary" type="submit">Save schedule</button></div>
     </form>
   </dialog>
 
@@ -280,7 +227,7 @@
     <form id="repair-form">
       <div class="dialog-head">
         <h2 id="repair-dialog-title">Repair and resume</h2>
-        <button class="close-button" type="button" data-close-dialog="repair-dialog">← Back</button>
+        <button class="close-button" type="button" data-close-dialog="repair-dialog">Close</button>
       </div>
       <input id="repair-id" type="hidden">
       <p id="repair-sentence" class="repair-sentence"></p>
@@ -297,13 +244,13 @@
   <dialog id="shortcuts-dialog" class="shortcuts-dialog">
     <div class="dialog-head">
       <h2>Keyboard</h2>
-      <button class="close-button" type="button" data-close-dialog="shortcuts-dialog" aria-label="Close shortcuts">← Back</button>
+      <button class="close-button" type="button" data-close-dialog="shortcuts-dialog" aria-label="Close shortcuts">Close</button>
     </div>
     <dl class="shortcut-list">
-      <div><dt><kbd>/</kbd></dt><dd>Search people and scopes</dd></div>
-      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move through waiting requests</dd></div>
+      <div><dt><kbd>/</kbd></dt><dd>Search people</dd></div>
+      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move through Waiting on you</dd></div>
       <div><dt><kbd>y</kbd></dt><dd>Approve the selected request</dd></div>
-      <div><dt><kbd>n</kbd></dt><dd>Reject the selected request</dd></div>
+      <div><dt><kbd>n</kbd></dt><dd>Decline the selected request</dd></div>
       <div><dt><kbd>?</kbd></dt><dd>Show this reference</dd></div>
       <div><dt><kbd>Esc</kbd></dt><dd>Close a dialog</dd></div>
     </dl>
@@ -316,6 +263,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=activity20261116"></script>
+  <script type="module" src="/static/console.js?v=slim20261116"></script>
 </body>
 </html>

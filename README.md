@@ -37,27 +37,25 @@ is not how this frontend is run anymore.
 
 | Page | What it shows |
 |---|---|
-| Home | What is waiting, what is running, recent activity, upcoming schedules |
-| Requests | Requests waiting on the owner, approved or rejected inline |
-| People | One row per person; Name, Roles and Note save together; contacts commit inline; unassigned contacts can be attached; effective scopes are read-only |
-| Roles | Each role's scopes and members; the editor renames the role and changes its note and scopes |
-| Scopes | The gate's decision tree, left to right: system, question, scopes, tools, and the roles holding each scope |
-| Tasks | The task ledger with each task's events |
-| Schedules | Approved schedules and their next runs |
-| Health | Tunnel, uptime, interrupted runs, recent errors |
-| Settings | The owner's knobs, each with what it does |
+| Home (`/console/`) | The In, Out, Later flow strip; Waiting on you (approve, decline, edit, with the #id); Stuck; Running; Coming up; Done today |
+| Activity (`/console/activity`) | Every task, and every run not part of a listed task, with how each ended; filter by waiting, running, done, failed; a task opens its ledger in a side sheet (`/console/activity/<id>`) |
+| Messages (`/console/messages`) | Incoming by person, follow-ups, outgoing |
+| Schedules (`/console/schedules`) | Schedules, their last run, actions and run history |
+| People (`/console/people`, `/people/roles`, `/people/groups`) | Tabs: People (contacts, roles, notes), Roles (who can do what), Group chats (reply mode) |
+| Settings (`/console/settings`) | System status (tunnel, uptime, last restart, interrupted runs, recent errors), everyday settings, and a collapsed Advanced group; Advanced links to Every permission (`/console/scopes`) |
+
+Old addresses (`/console/requests`, `/tasks`, `/roles`, `/groups`, `/health`, `/scopes`, and the same names as `#hash` links) redirect to their new home.
 
 ## Layout
 
 ```
 index.html              the single page shell; console.js decides what to render
 static/
-  console.css            all styling (the room-matching background, the type scale)
+  console.css            all styling: one quiet surface, Inter with tabular figures, one button system
   console.js              the thin client: fetch, render, post -- no business rules
   config.js                API base + events URL, read before console.js runs
   brand.svg                the abstract logo mark, used as the tab icon; the sidebar shows the
                             assistant's real picture, loaded from the API (`/console/api/avatar`)
-  scene.svg                 the background: the room behind Blatbot's profile photo
   fonts/
     Inter-Variable-latin.woff2    self-hosted, SIL OFL (see font section below)
     OFL-Inter.txt
