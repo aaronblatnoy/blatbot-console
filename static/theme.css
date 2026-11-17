@@ -454,3 +454,14 @@ body { background:
 .chan-other .ic { width: 13px; height: 13px; }
 .chan.chan-other { color: #c9d0ee; }
 @media (max-width: 760px) { body { background: var(--bg); } }
+@media (max-width: 760px) {
+  .tb-actions { margin-left: auto; width: auto; }
+  .tb-actions:has(.segmented, form) { margin-left: 0; width: 100%; }
+  .pb-actions:not(:has(.search-field)) { margin-left: auto; width: auto; }
+}
+@media (max-width: 760px) {
+  .tb-actions .segmented { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .tb-actions .segmented button { flex: none; }
+  .tb-actions { gap: 6px; }
+}
+.role-member-count.pill { justify-self: start; width: fit-content; }
