@@ -2094,6 +2094,8 @@ function navigate(path, { replace = false } = {}) {
   const heading = $(`[data-view="${state.activeView}"] h1`);
   if (heading && !$('dialog[open]')) {
     heading.tabIndex = -1;
+    heading.classList.toggle('quiet-focus', !state.lastInputKeyboard);
+    heading.addEventListener('blur', () => heading.classList.remove('quiet-focus'), { once: true });
     heading.focus({ preventScroll: true });
   }
 }
@@ -2418,6 +2420,8 @@ $('#task-dialog').addEventListener('close', () => {
   if (state.taskId) navigate(VIEW_PATHS.runs, { replace: true });
 });
 window.addEventListener('popstate', applyRoute);
+document.addEventListener('keydown', () => { state.lastInputKeyboard = true; }, true);
+document.addEventListener('pointerdown', () => { state.lastInputKeyboard = false; }, true);
 
 applyRoute({ replaceUnknown: true });
 if (state.activeView !== 'overview') refreshWaitingCount().catch(error => showNotice(`Waiting count not loaded: ${error.message}`, 'error'));
@@ -2476,6 +2480,11 @@ document.addEventListener('keydown', event => {
 
 // ---- Shared marks: icons, avatars, channel marks, pills, small charts ----------------------
 // Declared as functions (hoisted) so the first route, which runs above, can use them.
+function pl(n, one, many = `${one}s`) {
+  const value = Number(n);
+  const shown = Number.isFinite(value) ? value.toLocaleString() : String(n ?? '');
+  return `${shown} ${value === 1 ? one : many}`;
+}
 function icon(name) { return `<svg class="ic" aria-hidden="true"><use href="#i-${escapeHTML(name)}"/></svg>`; }
 
 function hueFor(text) {
@@ -2583,18 +2592,18 @@ function loopModel() {
   const roles = state.rolesSummary?.roles?.length;
   const n = v => (v == null ? '–' : Number(v).toLocaleString());
   return {
-    timers: { title: 'Timers', icon: 'timers', route: 'timers', num: n(schedulesActive + followups), unit: 'set', chips: [[`${followups} follow-ups`, followups ? 'running' : ''], [`${schedulesActive} schedules`, '']] },
+    timers: { title: 'Timers', icon: 'timers', route: 'timers', num: n(schedulesActive + followups), unit: 'set', chips: [[pl(followups, 'follow-up'), followups ? 'running' : ''], [pl(schedulesActive, 'schedule'), '']] },
     inbox: { title: 'Event inbox', icon: 'inbox', route: 'inbox', num: n((inbox.pending || 0) + (inbox.running || 0)), unit: 'open', tone: inbox.failed ? 'bad' : '',
       chips: [[`${n(inbox.done)} done`, 'done'], ...(inbox.failed ? [[`${inbox.failed} failed`, 'failed']] : [[`${inbox.pending || 0} waiting`, inbox.pending ? 'waiting' : '']])] },
     run: { title: 'Runs and sessions', icon: 'runs', route: 'runs', core: true, num: n(counts.running || 0), unit: 'running now',
       chips: [[`${counts.done_today || 0} done today`, 'done'], [`${counts.stuck || 0} stuck`, counts.stuck ? 'failed' : '']] },
     memory: { title: 'Memory', icon: 'memory', route: 'memory', num: n(msgTotal), unit: 'messages kept',
-      chips: [[`${n(mem?.notes?.total)} notes`, ''], [mem?.graph?.enabled ? 'Graph on' : 'Graph off', mem?.graph?.enabled ? 'done' : '']] },
+      chips: [[mem ? pl(mem.notes?.total || 0, 'note') : '– notes', ''], [mem?.graph?.enabled ? 'Graph on' : 'Graph off', mem?.graph?.enabled ? 'done' : '']] },
     permissions: { title: 'Permissions', icon: 'permissions', route: waiting ? 'approvals' : 'permissions', num: n(waiting), unit: 'waiting on you', tone: waiting ? 'alert' : '',
-      chips: [[`${n(roles)} roles`, ''], [auto ? `Auto mode ${auto.value ? 'on' : 'off'}` : 'Auto mode', auto?.value ? 'done' : '']] },
+      chips: [[roles == null ? '– roles' : pl(roles, 'role'), ''], [auto ? `Auto mode ${auto.value ? 'on' : 'off'}` : 'Auto mode', auto?.value ? 'done' : '']] },
     outbox: { title: 'Outbox', icon: 'outbox', route: 'outbox', num: n(outbox.sent), unit: 'sent', tone: outbox.failed ? 'bad' : '',
       chips: [[`${(outbox.queued || 0) + (outbox.sending || 0)} queued`, (outbox.queued || outbox.sending) ? 'running' : ''], [`${outbox.held || 0} held`, outbox.held ? 'waiting' : ''], ...(outbox.failed ? [[`${outbox.failed} failed`, 'failed']] : [])] },
-    people: { title: 'You and people', icon: 'people', route: 'people', num: n(state.people?.length || null), unit: 'people', chips: [[`${state.groups?.length || 0} group chats`, '']] },
+    people: { title: 'You and people', icon: 'people', route: 'people', num: n(state.people?.length || null), unit: state.people?.length === 1 ? 'person' : 'people', chips: [[pl(state.groups?.length || 0, 'group chat'), '']] },
   };
 }
 
@@ -2737,10 +2746,10 @@ function renderMemory() {
   const reported = Object.entries(m.reported?.by_kind || {}).sort((a, b) => b[1] - a[1]);
   const paragraphs = m.instructions?.paragraphs || [];
   host.innerHTML = `<div class="stat-cards">
-      ${statCard({ label: 'User instructions', icon: 'instructions', value: paragraphs.length, unit: 'paragraphs', pill: m.instructions?.updated_at ? relTime(m.instructions.updated_at) : '' })}
-      ${statCard({ label: 'User notes', icon: 'notes', value: m.notes?.total || 0, unit: 'notes' })}
-      ${statCard({ label: 'Past messages', icon: 'archive', value: msgTotal, unit: `${m.messages?.chats || 0} chats`, chart: sparkBars(m.messages?.per_day || [], 'flow'), axis: ['14 days ago', 'Today'] })}
-      ${statCard({ label: 'Task progress', icon: 'tasks', value: taskTotal, unit: 'tasks', pill: `${(m.tasks?.ledger_entries || 0).toLocaleString()} ledger lines` })}
+      ${statCard({ label: 'User instructions', icon: 'instructions', value: paragraphs.length, unit: paragraphs.length === 1 ? 'paragraph' : 'paragraphs', pill: m.instructions?.updated_at ? relTime(m.instructions.updated_at) : '' })}
+      ${statCard({ label: 'User notes', icon: 'notes', value: m.notes?.total || 0, unit: m.notes?.total === 1 ? 'note' : 'notes' })}
+      ${statCard({ label: 'Past messages', icon: 'archive', value: msgTotal, unit: pl(m.messages?.chats || 0, 'chat'), chart: sparkBars(m.messages?.per_day || [], 'flow'), axis: ['14 days ago', 'Today'] })}
+      ${statCard({ label: 'Task progress', icon: 'tasks', value: taskTotal, unit: taskTotal === 1 ? 'task' : 'tasks', pill: pl(m.tasks?.ledger_entries || 0, 'ledger line') })}
       ${statCard({ label: 'Graph memory', icon: 'graph', value: m.graph?.enabled ? 'On' : 'Off', tone: m.graph?.enabled ? 'done' : 'failed', pill: `${m.graph?.pending_writes || 0} queued` })}
     </div>
     <div class="memory-grid">
@@ -2758,7 +2767,7 @@ function renderMemory() {
         </section>
         <section class="card">
           <header class="title-bar"><span class="tb-icon tone-flow">${icon('graph')}</span><h2>Graph memory</h2><span class="pill tone-${m.graph?.enabled ? 'done' : 'failed'}">${m.graph?.enabled ? 'On' : 'Off'}</span></header>
-          <div class="card-body tag-line"><span class="pill">Recall waits ${escapeHTML(m.graph?.recall_seconds)} s</span><span class="pill">Up to ${escapeHTML(m.graph?.max_facts)} facts a turn</span><span class="pill${m.graph?.pending_writes ? ' tone-running' : ''}">${escapeHTML(m.graph?.pending_writes || 0)} writes queued</span></div>
+          <div class="card-body tag-line"><span class="pill">Recall waits ${escapeHTML(m.graph?.recall_seconds)} s</span><span class="pill">Up to ${escapeHTML(m.graph?.max_facts)} facts a turn</span><span class="pill${m.graph?.pending_writes ? ' tone-running' : ''}">${escapeHTML(pl(m.graph?.pending_writes || 0, 'write'))} queued</span></div>
         </section>
       </div>
       <section class="card">
@@ -2798,7 +2807,7 @@ function renderPages() {
   host.innerHTML = `<div class="stat-cards">
       ${statCard({ label: 'Live pages', icon: 'pages', value: pages.length })}
       ${statCard({ label: 'Who gets them', icon: 'people', value: audience || 'Unknown' })}
-      ${statCard({ label: 'Kept for', icon: 'timers', value: Math.round(data.days || 0), unit: 'days' })}
+      ${statCard({ label: 'Kept for', icon: 'timers', value: Math.round(data.days || 0), unit: Math.round(data.days || 0) === 1 ? 'day' : 'days' })}
     </div>
     ${pages.length ? `<div class="page-cards">${pages.map(page => `<a class="card page-card" href="${escapeHTML(page.url)}" target="_blank" rel="noopener noreferrer">
         <div class="page-thumb" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
