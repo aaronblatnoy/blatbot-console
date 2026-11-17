@@ -682,3 +682,9 @@ kbd { display: inline-flex; min-width: 22px; height: 22px; padding: 0 6px; align
   .knowledge-person .row-meta { max-width: 100%; justify-content: flex-start; }
   .knowledge-rules { grid-template-columns: 1fr; }
 }
+/* Phone: a person's name, roles and reach stack instead of squeezing into one line. */
+@media (max-width: 760px) {
+  .row.knowledge-person { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .row.knowledge-person .row-meta { max-width: 100%; justify-content: flex-start; }
+  .knowledge-access .lane-more summary .pill { white-space: normal; height: auto; padding: 4px 10px; }
+}
