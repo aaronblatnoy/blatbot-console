@@ -594,8 +594,9 @@ async function decide(requestId, decision, note) {
 
 async function refreshRoles({ throwOnError = false } = {}) {
   try {
-    const [summary, directory] = await Promise.all([api('/roles/summary'), api('/people/directory')]);
+    const [summary, directory, knowledge] = await Promise.all([api('/roles/summary'), api('/people/directory'), api('/knowledge').catch(() => null)]);
     state.rolesSummary = summary;
+    state.knowledge = knowledge;
     state.people = directory.people || []; state.unassigned = directory.unlinked || []; state.contactKinds = directory.contact_kinds || [];
     renderRolesPage();
   } catch (error) {
@@ -881,6 +882,49 @@ function roleNotesRow(role) {
   </div>`;
 }
 
+const MEMORY_LEVEL_WORDS = { own: 'Own conversations', groups: 'Plus every group chat', all: 'Every conversation' };
+
+function roleMemoryRow(role) {
+  const levels = state.rolesSummary?.memory_levels || Object.entries(MEMORY_LEVEL_WORDS).map(([value, label]) => ({ value, label }));
+  const level = role.memory?.level || 'own';
+  return `<div class="role-notes-row">
+    <div class="role-notes-head">
+      <span class="role-system-label">Memory</span>
+    </div>
+    <div class="role-system-controls">
+      <select class="role-system-level-select" data-role-memory-level aria-label="Memory reach">
+        ${levels.map(l => `<option value="${escapeHTML(l.value)}" ${l.value === level ? 'selected' : ''}>${escapeHTML(l.label)}</option>`).join('')}
+      </select>
+    </div>
+    ${(role.memory?.chats || []).length ? `<p class="role-knowledge-extra">Also: ${escapeHTML(role.memory.chats.join(', '))}</p>` : ''}
+  </div>`;
+}
+
+function notesPill(notes) {
+  const level = notes?.level || 'none';
+  if (level === 'all') return `<span class="pill tone-accent">${icon('notes')}All notes</span>`;
+  if (level === 'some') {
+    const names = (notes.folders || []).filter(f => f.on !== false).map(f => typeof f === 'string' ? f : f.label).map(folderName);
+    return names.map(n => `<span class="pill tone-waiting">${icon('notes')}${escapeHTML(n)}</span>`).join('');
+  }
+  return `<span class="pill">${icon('notes')}No notes</span>`;
+}
+
+function memoryPill(memory) {
+  const level = memory?.level || 'own';
+  const tone = level === 'all' ? ' tone-accent' : level === 'groups' ? ' tone-waiting' : '';
+  return `<span class="pill${tone}">${icon('graph')}${escapeHTML(MEMORY_LEVEL_WORDS[level] || 'Own conversations')}</span>`;
+}
+
+function folderName(label) {
+  return String(label || '').replace(/^read (all of )?your notes (in|on) /i, '');
+}
+
+function roleKnowledgeLine(role) {
+  const folders = role.notes?.level === 'some' ? { ...role.notes, folders: (role.notes.folders || []).filter(f => f.on) } : role.notes;
+  return `<div class="tag-line role-knowledge-line">${notesPill(folders)}${memoryPill(role.memory)}</div>`;
+}
+
 function roleMembersBlock(role) {
   const held = new Set((role.members || []).map(m => m.person_id));
   const addable = (state.people || []).filter(p => !held.has(p.id));
@@ -912,11 +956,13 @@ function renderRoleRow(role) {
       <button type="button" class="button button-secondary button-small role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${isOpen ? 'Done' : 'Edit'}</button>
     </div>
     <p class="role-row-can-text">${escapeHTML(role.can_text || '')}</p>
+    ${roleKnowledgeLine(role)}
     ${isOpen ? `<div class="role-row-body">
       ${renameHTML}
       ${roleMembersBlock(role)}
       ${role.locked ? '' : `<div class="role-systems">${(role.systems || []).map(roleSystemControl).join('')}</div>`}
       ${role.locked ? '' : roleNotesRow(role)}
+      ${role.locked ? '' : roleMemoryRow(role)}
       ${roleDeleteBlock(role)}
     </div>` : ''}
     ${affects ? `<p class="role-affects-text${affects.fading ? ' is-fading' : ''}">${escapeHTML(affects.text)}</p>` : ''}
@@ -965,9 +1011,35 @@ function renderRolesPage() {
   const ordered = [...(summary.roles || [])].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
   host.innerHTML = ordered.length ? ordered.map(renderRoleRow).join('') : '<p class="empty-line">No roles yet.</p>';
   const rolesBadge = $('#roles-badge'); if (rolesBadge) rolesBadge.textContent = ordered.length;
+  renderKnowledgeAccess();
   renderAutoMode();
   bindWhoCanSearch();
   renderWhoCanResults();
+}
+
+function knowledgeRules(rules) {
+  return `<div class="knowledge-rules">${(rules || []).map(r => `<div class="knowledge-rule"><span class="knowledge-rule-title">${escapeHTML(r.title)}</span><span class="knowledge-rule-text">${escapeHTML(r.text)}</span></div>`).join('')}</div>`;
+}
+
+function renderKnowledgeAccess() {
+  const host = $('#knowledge-access');
+  if (!host) return;
+  host.setAttribute('aria-busy', 'false');
+  const k = state.knowledge;
+  if (!k) { host.innerHTML = '<p class="empty-line">Not loaded.</p>'; return; }
+  const badge = $('#knowledge-badge'); if (badge) badge.textContent = k.counts?.beyond_own ?? 0;
+  const people = k.people || [];
+  const reach = people.filter(p => p.you || p.notes.level !== 'none' || p.memory.level !== 'own');
+  const rest = people.filter(p => !reach.includes(p));
+  const row = p => `<li class="row knowledge-person">
+      <div class="row-main"><span class="row-title">${escapeHTML(p.you ? `${p.name} (you)` : p.name)}</span>
+        <span class="row-sub tag-line">${(p.roles || []).map(r => `<span class="tag">${escapeHTML(r)}</span>`).join('')}</span></div>
+      <span class="row-meta tag-line">${notesPill({ level: p.notes.level, folders: (p.notes.folders || []).map(label => ({ label })) })}${memoryPill(p.memory)}</span>
+    </li>`;
+  host.innerHTML = `${knowledgeRules(k.rules)}
+    ${subBar('Reach beyond their own conversations', 'people', reach.length)}
+    <ul class="row-list">${reach.map(row).join('')}</ul>
+    ${rest.length ? `<details class="lane-more"><summary><span class="pill tone-accent">${escapeHTML(pl(rest.length, 'person', 'people'))} with no notes and their own conversations only</span></summary><ul class="row-list">${rest.map(row).join('')}</ul></details>` : ''}`;
 }
 
 function showRoleAffects(name, text) {
@@ -1017,6 +1089,15 @@ async function setRoleNotesLevel(name, level) {
   const folders = ((role?.notes || {}).folders || []).filter(f => f.on).map(f => f.scope);
   try {
     const result = await post('/roles/set_notes', { role: name, level, folders });
+    state.roleOpen.add(name);
+    await refreshRoles();
+    showRoleAffects(name, result.affects_text);
+  } catch (error) { showNotice(`Could not change ${name}: ${error.message}`, 'error'); await refreshRoles(); }
+}
+
+async function setRoleMemoryLevel(name, level) {
+  try {
+    const result = await post('/roles/set_memory', { role: name, level });
     state.roleOpen.add(name);
     await refreshRoles();
     showRoleAffects(name, result.affects_text);
@@ -2254,6 +2335,11 @@ document.addEventListener('change', event => {
     setRoleSend(sendToggle.closest('[data-role-name]').dataset.roleName, sendToggle.dataset.system, sendToggle.checked);
     return;
   }
+  const memoryLevel = event.target.closest('[data-role-memory-level]');
+  if (memoryLevel) {
+    setRoleMemoryLevel(memoryLevel.closest('[data-role-name]').dataset.roleName, memoryLevel.value);
+    return;
+  }
   const notesLevel = event.target.closest('[data-role-notes-level]');
   if (notesLevel) {
     setRoleNotesLevel(notesLevel.closest('[data-role-name]').dataset.roleName, notesLevel.value);
@@ -2797,6 +2883,13 @@ function renderMemory() {
         ${subBar('Reported back', 'reported', m.reported?.total || 0)}
         ${reported.length ? barList(reported) : '<p class="empty-line">Nothing reported yet.</p>'}
       </section>
+      ${(m.access || []).length ? `<section class="card memory-access">
+        <header class="title-bar"><span class="tb-icon">${icon('permissions')}</span><h2>Who can read it</h2><a class="pill tone-accent" href="${VIEW_PATHS.permissions}" data-route="permissions">${icon('roles')}Edit on Permissions</a></header>
+        <ul class="row-list">${m.access.map(a => `<li class="row access-part">
+          <div class="row-main"><span class="row-title">${escapeHTML(a.part)}</span><span class="row-sub">${escapeHTML(a.readers)}</span>
+          ${(a.who || []).length ? `<span class="tag-line">${a.who.map(w => `<span class="pill tone-waiting" title="${escapeHTML(w.people)}">${escapeHTML(folderName(w.reach))} · ${escapeHTML(pl(w.count, 'person', 'people'))}</span>`).join('')}</span>` : ''}</div>
+        </li>`).join('')}</ul>
+      </section>` : ''}
       <section class="card">
         <header class="title-bar"><span class="tb-icon">${icon('tasks')}</span><h2>Task progress</h2><span class="badge">${taskTotal}</span></header>
         ${barList(tasks)}
