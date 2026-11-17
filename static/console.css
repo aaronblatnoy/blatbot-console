@@ -1358,3 +1358,90 @@ input, select, textarea, .search-field, .new-role-name { background: rgba(8, 16,
 nav a:hover { background: rgba(148, 176, 230, .09); }
 nav a[aria-current="page"] { background: rgba(36, 135, 222, .20); }
 .people-layout .person-row.is-selected { background: rgba(36, 135, 222, .18); }
+
+/* ==========================================================================
+   Composure layer. Same lit navy room, same blue, same avatar. Quieter
+   texture, one display face for titles and counts, sentence case everywhere,
+   one radius per level (cards 12, controls 8, pills round), readable
+   decision buttons, and table rows that line up.
+   ========================================================================== */
+:root {
+  --r-panel: 12px;
+  --r-ctl: 8px;
+  --ok: #5fb894;
+  --bad: #e07a7a;
+  --gap: 14px;
+}
+body::before { opacity: .34; }
+.section { padding-top: 28px; }
+.section-heading { border-bottom: 0; padding-bottom: 6px; margin-bottom: 14px; }
+.section-heading h1, .section-heading h2 {
+  font-family: var(--display); font-size: 24px; font-weight: 600; letter-spacing: -.005em;
+}
+.home-needs-count, .big-count, .health-stat dd, .pulse-count { font-family: var(--display); }
+
+/* Sentence case labels, no tracked capitals. */
+.settings-group > h3, .pane-label, .role-scope-columns h4, .role-members h4 {
+  text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--muted);
+}
+.write-mark, .send-mark, .role-locked-badge, .role-row-locked-badge { text-transform: none; letter-spacing: 0; font-size: 11px; }
+.state { text-transform: none; }
+
+/* One radius per level. */
+.home-card, .request-card, .schedule-card, .role-row, .group-row, .task-list, .request-history,
+.health-grid, .health-columns > div, .settings-panel, .people-layout, .empty-state, .who-can-results,
+.history-block > summary, .activity-panel, .pulse { border-radius: var(--r-panel); }
+
+/* Decisions read clearly: approve is filled, decline is outlined in red. */
+.button-approve { background: var(--ok); border-color: var(--ok); color: #05150e; }
+.button-approve:hover { background: #74c8a5; border-color: #74c8a5; color: #05150e; }
+.button-reject { background: transparent; border-color: rgba(224, 122, 122, .55); color: #f0a3a3; }
+.button-reject:hover { background: rgba(224, 122, 122, .14); border-color: var(--bad); color: #ffd0d0; }
+
+/* Requests: who, where and the reply handle in one column. */
+.request-card { padding: 16px 18px; }
+.request-who .sender { font-weight: 600; color: var(--text); }
+.request-who .surface { color: var(--muted); font-size: 12px; background: none; border: 0; box-shadow: none; padding: 0; }
+.request-who .request-id { color: var(--accent-bright); font-size: 12px; font-weight: 600; }
+.request-summary { font-size: 15px; line-height: 1.45; margin: 0 0 6px; }
+.original-message summary { color: var(--muted); font-size: 12px; }
+.original-message blockquote { color: var(--text); }
+
+/* Tasks: a real table. Number, what, state, when, who. */
+.task-row {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr) 128px 132px minmax(0, 180px);
+  gap: 14px; align-items: center; padding: 10px 16px;
+}
+.task-row .summary { color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.task-row .participant-list { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-id { font-weight: 600; }
+.where-chip {
+  display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; vertical-align: 1px;
+  font-size: 11px; line-height: 18px; color: var(--muted); background: rgba(148, 176, 230, .08); border: 1px solid var(--rule);
+}
+.history-row { display: grid; grid-template-columns: 128px 150px minmax(0, 1fr) 132px; gap: 14px; align-items: center; padding: 10px 16px; }
+.history-row .summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-row time, .task-row time { color: var(--faint); font-size: 12px; }
+
+/* Home: the numbers carry the page. */
+.home-grid { gap: var(--gap); }
+.home-card { padding: 18px 20px 14px; }
+.home-needs-count, .home-stuck.is-urgent .home-needs-count { font-size: 32px; font-weight: 600; }
+.home-stuck.is-urgent .home-needs-count { color: #e0b878; }
+.home-mini-list li { padding: 9px 0; }
+
+/* Health and settings */
+.health-stat dd { font-size: 18px; }
+.setting-row { padding: 12px 18px; }
+.settings-group + .settings-group { margin-top: 10px; }
+
+@media (max-width: 760px) {
+  .section { padding-top: 18px; }
+  .section-heading h1, .section-heading h2 { font-size: 21px; }
+  .task-row { grid-template-columns: 44px minmax(0, 1fr); gap: 4px 10px; }
+  .task-row .state, .task-row time, .task-row .participant-list { grid-column: 2; }
+  .task-row .participant-list:empty { display: none; }
+  .history-row { grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; }
+  .history-row .summary { grid-column: 1 / -1; white-space: normal; }
+  .request-card { padding: 14px; }
+}
