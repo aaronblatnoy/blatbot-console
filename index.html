@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#00010d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=composure20261116">
+  <link rel="stylesheet" href="/static/console.css?v=activity20261116">
   <script src="/static/config.js"></script>
 </head>
 <body>
@@ -20,6 +20,7 @@
     <nav aria-label="Console sections">
       <a href="/console/" data-route="home" aria-current="page">Home</a>
       <a href="/console/requests" data-route="requests">Requests <span id="nav-waiting-count" class="nav-count" hidden></span></a>
+      <a href="/console/messages" data-route="messages">Messages <span id="nav-messages-count" class="nav-count nav-count-alert" hidden></span></a>
       <a href="/console/people" data-route="people">People</a>
       <a href="/console/roles" data-route="roles">Roles</a>
       <a href="/console/tasks" data-route="tasks">Tasks</a>
@@ -33,6 +34,7 @@
       <select id="mobile-route" aria-label="Console page">
         <option value="/console/">Home</option>
         <option value="/console/requests">Requests</option>
+        <option value="/console/messages">Messages</option>
         <option value="/console/people">People</option>
         <option value="/console/roles">Roles</option>
         <option value="/console/tasks">Tasks</option>
@@ -94,6 +96,16 @@
         </div>
         <div id="request-history" class="request-history"></div>
       </details>
+    </section>
+
+    <section id="messages" class="section messages-section" data-view="messages" aria-labelledby="messages-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="messages-title">Messages</h2>
+        </div>
+        <button id="refresh-messages" class="button button-quiet" type="button">Refresh</button>
+      </div>
+      <div id="messages-content" class="messages-content" aria-live="polite" aria-busy="true"></div>
     </section>
 
     <section id="people" class="section" data-view="people" aria-labelledby="people-title" hidden>
@@ -304,6 +316,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=composure20261116"></script>
+  <script type="module" src="/static/console.js?v=activity20261116"></script>
 </body>
 </html>
