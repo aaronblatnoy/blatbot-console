@@ -1036,8 +1036,10 @@ function setFormBusy(form, busy) {
 const RUN_OUTCOME_CLASS = { sent: 'done', quiet: 'neutral', asked: 'pending', deferred: 'pending', failed: 'failed', none: 'neutral' };
 const OUTCOME_WORD = { sent: 'Sent', quiet: 'Quiet', asked: 'Asked you', deferred: 'Asked you', failed: 'Did not finish', none: 'Replied' };
 function outcomeLine(outcome) {
-  if (!outcome || !outcome.text) return '';
-  return `<span class="outcome-line outcome-${escapeHTML(outcome.kind)}"><span class="outcome-kind">${escapeHTML(OUTCOME_WORD[outcome.kind] || '')}</span>${escapeHTML(outcome.text.replace(/^(Sent to|Stayed quiet:?|Asked you:?)\s*/i, ''))}</span>`;
+  // "Replied with its closing text" is how every run ended before runs chose their own
+  // ending, so it says nothing; only the choices a run made are shown.
+  if (!outcome || !outcome.text || outcome.kind === 'none') return '';
+  return `<span class="outcome-line outcome-${escapeHTML(outcome.kind)}" title="${escapeHTML(outcome.text)}">${escapeHTML(outcome.text)}</span>`;
 }
 
 function relTime(value) {
@@ -1068,7 +1070,7 @@ function inboxLaneHTML(lane) {
   const events = lane.events || [];
   const row = event => `<li class="msg-row">
       ${statePill(event.status === 'pending' ? 'queued' : event.status)}
-      <span class="msg-main"><span class="msg-meta">${escapeHTML([event.kind_label, event.surface, event.where && event.where !== lane.label ? event.where : ''].filter(Boolean).join(', '))}</span><span class="msg-text">${escapeHTML(clean(event.preview) || 'No text')}</span>${event.error ? `<span class="msg-error">${escapeHTML(event.error)}</span>` : ''}</span>
+      <span class="msg-main"><span class="msg-meta">${escapeHTML([event.kind_label, event.kind === 'timer' ? '' : event.surface, event.where && event.where !== lane.label ? event.where : ''].filter(Boolean).join(', '))}</span><span class="msg-text">${escapeHTML(clean(event.preview) || (event.kind === 'timer' ? 'Checking back on its own' : 'No text'))}</span>${event.error ? `<span class="msg-error">${escapeHTML(event.error)}</span>` : ''}</span>
       <time title="${escapeHTML(formatTime(event.created_at))}">${escapeHTML(relTime(event.created_at))}</time>
     </li>`;
   return `<article class="lane-card${busy ? ' is-busy' : ''}">

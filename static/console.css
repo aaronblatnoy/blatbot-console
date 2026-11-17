@@ -1550,3 +1550,12 @@ body::before { opacity: .34; }
   .msg-main { grid-column: 1 / -1; }
   .activity-panel { padding: 12px; }
 }
+/* The arrows take the slack, so the strip reads left to right as one flow. */
+.pulse-stage { flex: 0 0 auto; }
+.pulse-arrow { flex: 1 1 40px; margin: 0 6px; }
+.pulse-arrow::before { width: calc(100% - 2px); }
+.outcome-line::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; background: var(--faint); }
+.outcome-sent::before { background: #86c9ae; }
+.outcome-asked::before, .outcome-deferred::before { background: #e0b878; }
+.outcome-failed::before { background: #e29a9a; }
+.msg-row { grid-template-columns: 62px minmax(0, 1fr) auto; }
