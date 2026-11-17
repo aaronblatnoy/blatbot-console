@@ -4,30 +4,86 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0b0f1a">
+  <meta name="theme-color" content="#090d1d">
   <title>Blatbot console</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand.svg">
-  <link rel="stylesheet" href="/static/console.css?v=slim20261116">
+  <link rel="stylesheet" href="/static/console.css?v=loop20261117">
+  <link rel="stylesheet" href="/static/theme.css?v=loop20261117">
   <script src="/static/config.js"></script>
 </head>
 <body>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-overview" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3"/><path d="M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4"/><path d="M6 21v-4h4"/></symbol>
+      <symbol id="i-approvals" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+      <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8"/><path d="M3 13v6h18v-6h-5l-1.5 2.5h-5L8 13z"/></symbol>
+      <symbol id="i-runs" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+      <symbol id="i-timers" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></symbol>
+      <symbol id="i-outbox" viewBox="0 0 24 24"><path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/></symbol>
+      <symbol id="i-memory" viewBox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16.5l9 5 9-5"/></symbol>
+      <symbol id="i-permissions" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M17 6l3 3"/><path d="M15 8l2 2"/></symbol>
+      <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.6c2 .7 3.2 2.5 3.6 5.4"/></symbol>
+      <symbol id="i-groups" viewBox="0 0 24 24"><path d="M4 4h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M19 9h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-1v3l-4-3h-3a2 2 0 0 1-2-2v-1"/></symbol>
+      <symbol id="i-pages" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+      <symbol id="i-stuck" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></symbol>
+      <symbol id="i-running" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+      <symbol id="i-coming" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+      <symbol id="i-done" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></symbol>
+      <symbol id="i-system" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+      <symbol id="i-followup" viewBox="0 0 24 24"><path d="M6 2h12M6 22h12"/><path d="M7 2c0 6 10 6 10 10S7 16 7 22"/><path d="M17 2c0 6-10 6-10 10s10 4 10 10"/></symbol>
+      <symbol id="i-schedule" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></symbol>
+      <symbol id="i-roles" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.6-2 2-3 3.5-3s2.9 1 3.5 3"/><path d="M15 10h3M15 14h3"/></symbol>
+      <symbol id="i-auto" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+      <symbol id="i-instructions" viewBox="0 0 24 24"><path d="M4 4h16v12H8l-4 4z"/><path d="M8 8h8M8 12h5"/></symbol>
+      <symbol id="i-notes" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></symbol>
+      <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="10" cy="18" r="2.5"/><path d="M8.4 6.4l7.2 1.2M6.9 8.4l2.2 7.2M16.6 10.1l-5 6"/></symbol>
+      <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M10 6h11M10 12h11M10 18h11"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></symbol>
+      <symbol id="i-reported" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1z"/><path d="M16 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+      <symbol id="i-dispatcher" viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/><path d="M4 18h16"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.8-4M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.8 4M20 20v-4h-4"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+    </defs>
+  </svg>
+
   <a class="skip-link" href="#main">Skip to console</a>
 
   <header class="topbar">
     <div class="identity">
-      <a class="brand-avatar-link" href="/console/" data-route="home" aria-label="Blatbot console home"><img class="brand-avatar" alt="" width="64" height="64"><span class="wordmark">BLATBOT</span></a>
+      <a class="brand-avatar-link" href="/console/" data-route="overview" aria-label="Blatbot overview"><img class="brand-avatar" alt="" width="64" height="64"><span class="wordmark">Blatbot</span></a>
     </div>
     <nav class="main-nav" aria-label="Console sections">
-      <a href="/console/" data-route="home" aria-current="page"><span>Home</span><span id="nav-waiting-count" class="nav-count" hidden></span></a>
-      <a href="/console/activity" data-route="activity"><span>Activity</span></a>
-      <a href="/console/messages" data-route="messages"><span>Messages</span><span id="nav-messages-count" class="nav-count nav-count-alert" hidden></span></a>
-      <a href="/console/schedules" data-route="schedules"><span>Schedules</span></a>
-      <a href="/console/people" data-route="people"><span>People</span></a>
-      <a href="/console/settings" data-route="settings"><span>Settings</span></a>
+      <div class="nav-group" role="group" aria-labelledby="nav-g-loop">
+        <span class="nav-group-label" id="nav-g-loop">Agent loop</span>
+        <a href="/console/" data-route="overview" aria-current="page"><svg class="ic"><use href="#i-overview"/></svg><span class="nav-text">Overview</span></a>
+        <a href="/console/approvals" data-route="approvals"><svg class="ic"><use href="#i-approvals"/></svg><span class="nav-text">Approvals</span><span id="nav-waiting-count" class="nav-count" hidden></span></a>
+        <a href="/console/runs" data-route="runs"><svg class="ic"><use href="#i-runs"/></svg><span class="nav-text">Runs</span><span id="nav-running-count" class="nav-count nav-count-live" hidden></span></a>
+      </div>
+      <div class="nav-group" role="group" aria-labelledby="nav-g-prim">
+        <span class="nav-group-label" id="nav-g-prim">Primitives</span>
+        <a href="/console/inbox" data-route="inbox"><svg class="ic"><use href="#i-inbox"/></svg><span class="nav-text">Inbox</span><span id="nav-inbox-count" class="nav-count nav-count-live" hidden></span></a>
+        <a href="/console/timers" data-route="timers"><svg class="ic"><use href="#i-timers"/></svg><span class="nav-text">Timers</span></a>
+        <a href="/console/memory" data-route="memory"><svg class="ic"><use href="#i-memory"/></svg><span class="nav-text">Memory</span></a>
+        <a href="/console/permissions" data-route="permissions"><svg class="ic"><use href="#i-permissions"/></svg><span class="nav-text">Permissions</span></a>
+        <a href="/console/outbox" data-route="outbox"><svg class="ic"><use href="#i-outbox"/></svg><span class="nav-text">Outbox</span><span id="nav-messages-count" class="nav-count nav-count-alert" hidden></span></a>
+      </div>
+      <div class="nav-group" role="group" aria-labelledby="nav-g-extra">
+        <span class="nav-group-label" id="nav-g-extra">Blatbot</span>
+        <a href="/console/people" data-route="people"><svg class="ic"><use href="#i-people"/></svg><span class="nav-text">People</span></a>
+        <a href="/console/groups" data-route="groups"><svg class="ic"><use href="#i-groups"/></svg><span class="nav-text">Group chats</span></a>
+        <a href="/console/pages" data-route="pages"><svg class="ic"><use href="#i-pages"/></svg><span class="nav-text">Pages</span></a>
+        <a href="/console/settings" data-route="settings"><svg class="ic"><use href="#i-settings"/></svg><span class="nav-text">Settings</span></a>
+      </div>
     </nav>
     <div class="connection" aria-live="polite">
-      <a class="connection-link" href="/console/settings" data-route="settings" title="System status"><span id="stream-dot" class="stream-dot is-connecting"></span><span id="stream-label">Connecting</span></a>
-      <button class="key-button" type="button" data-open-shortcuts aria-label="Show keyboard shortcuts">?</button>
+      <a class="connection-link" href="/console/settings" data-route="settings" title="System status"><span id="stream-pill" class="pill pill-connecting"><span id="stream-dot" class="stream-dot is-connecting"></span><span id="stream-label">Connecting</span></span></a>
+      <button class="key-button" type="button" data-open-shortcuts aria-label="Show keyboard shortcuts"><svg class="ic"><use href="#i-keyboard"/></svg></button>
     </div>
   </header>
 
@@ -42,67 +98,174 @@
   <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 
   <main id="main">
-    <section id="home" class="section home-section" data-view="home" aria-labelledby="home-title">
-      <div class="section-heading">
-        <h1 id="home-title">Home</h1>
-      </div>
-      <div id="home-content" class="home-grid" aria-live="polite" aria-busy="true"></div>
+    <section id="overview" class="section" data-view="overview" aria-labelledby="overview-title">
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-overview"/></svg></span>
+        <h1 id="overview-title">Overview</h1>
+        <span id="overview-live" class="pill pill-live" hidden>Live</span>
+        <div class="pb-actions"><button id="refresh-overview" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="home-content" class="overview-grid" aria-live="polite" aria-busy="true"></div>
     </section>
 
-    <section id="activity" class="section" data-view="activity" aria-labelledby="activity-title" hidden>
-      <div class="section-heading">
-        <h1 id="activity-title">Activity</h1>
-        <div class="heading-actions">
-          <button id="refresh-activity" class="button button-quiet" type="button">Refresh</button>
-        </div>
-      </div>
-      <div class="segmented" role="group" aria-label="Filter activity">
-        <button type="button" data-activity-filter="all" aria-pressed="true">All <span class="seg-count" data-activity-count="all"></span></button>
-        <button type="button" data-activity-filter="waiting" aria-pressed="false">Waiting <span class="seg-count" data-activity-count="waiting"></span></button>
-        <button type="button" data-activity-filter="running" aria-pressed="false">Running <span class="seg-count" data-activity-count="running"></span></button>
-        <button type="button" data-activity-filter="done" aria-pressed="false">Done <span class="seg-count" data-activity-count="done"></span></button>
-        <button type="button" data-activity-filter="failed" aria-pressed="false">Failed <span class="seg-count" data-activity-count="failed"></span></button>
-      </div>
-      <div id="activity-list" class="panel row-list activity-list" aria-live="polite" aria-busy="true"></div>
+    <section id="approvals" class="section" data-view="approvals" aria-labelledby="approvals-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon tone-waiting"><svg class="ic"><use href="#i-approvals"/></svg></span>
+        <h1 id="approvals-title">Approvals</h1>
+        <span id="approvals-count" class="badge">0</span>
+        <div class="pb-actions"><button id="refresh-approvals" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="approvals-content" class="stack" aria-live="polite" aria-busy="true"></div>
     </section>
 
-    <section id="messages" class="section messages-section" data-view="messages" aria-labelledby="messages-title" hidden>
-      <div class="section-heading">
-        <h1 id="messages-title">Messages</h1>
-        <div class="heading-actions">
-          <button id="refresh-messages" class="button button-quiet" type="button">Refresh</button>
-        </div>
+    <section id="runs" class="section" data-view="runs" aria-labelledby="runs-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-runs"/></svg></span>
+        <h1 id="runs-title">Runs</h1>
+        <span class="badge" data-activity-count="all">0</span>
+        <div class="pb-actions"><button id="refresh-activity" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="runs-stats" class="stat-cards"></div>
+      <div class="card">
+        <header class="title-bar">
+          <span class="tb-icon"><svg class="ic"><use href="#i-list"/></svg></span>
+          <h2>Runs and sessions</h2>
+          <div class="tb-actions">
+            <div class="segmented" role="group" aria-label="Filter runs">
+              <button type="button" data-activity-filter="all" aria-pressed="true">All <span class="seg-count" data-activity-count="all"></span></button>
+              <button type="button" data-activity-filter="waiting" aria-pressed="false">Waiting <span class="seg-count" data-activity-count="waiting"></span></button>
+              <button type="button" data-activity-filter="running" aria-pressed="false">Running <span class="seg-count" data-activity-count="running"></span></button>
+              <button type="button" data-activity-filter="done" aria-pressed="false">Done <span class="seg-count" data-activity-count="done"></span></button>
+              <button type="button" data-activity-filter="failed" aria-pressed="false">Failed <span class="seg-count" data-activity-count="failed"></span></button>
+            </div>
+          </div>
+        </header>
+        <div id="activity-list" class="row-list activity-list" aria-live="polite" aria-busy="true"></div>
       </div>
-      <div id="messages-content" class="messages-content" aria-live="polite" aria-busy="true"></div>
     </section>
 
-    <section id="schedules" class="section" data-view="schedules" aria-labelledby="schedules-title" hidden>
-      <div class="section-heading">
-        <h1 id="schedules-title">Schedules</h1>
-        <div class="heading-actions">
-          <button id="add-schedule" class="button button-primary" type="button">New schedule</button>
+    <section id="inbox" class="section" data-view="inbox" aria-labelledby="inbox-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-inbox"/></svg></span>
+        <h1 id="inbox-title">Event inbox</h1>
+        <span id="inbox-badge" class="badge">0</span>
+        <div class="pb-actions"><button id="refresh-inbox" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="inbox-content" class="stack" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="timers" class="section" data-view="timers" aria-labelledby="timers-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-timers"/></svg></span>
+        <h1 id="timers-title">Timers</h1>
+        <span id="timers-badge" class="badge">0</span>
+        <div class="pb-actions"><button id="add-schedule" class="button button-primary" type="button"><svg class="ic"><use href="#i-plus"/></svg>New schedule</button></div>
+      </header>
+      <div class="stack">
+        <div class="card">
+          <header class="title-bar">
+            <span class="tb-icon"><svg class="ic"><use href="#i-followup"/></svg></span>
+            <h2>Follow-ups</h2>
+            <span id="followups-badge" class="badge">0</span>
+          </header>
+          <div id="followups-content" aria-live="polite"></div>
+        </div>
+        <div class="card card-flat">
+          <header class="title-bar">
+            <span class="tb-icon"><svg class="ic"><use href="#i-schedule"/></svg></span>
+            <h2>Schedules</h2>
+            <span id="schedules-badge" class="badge">0</span>
+          </header>
+          <div id="schedules-list" class="schedule-list" aria-live="polite" aria-busy="true"></div>
         </div>
       </div>
-      <div id="schedules-list" class="schedule-list" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="outbox" class="section" data-view="outbox" aria-labelledby="outbox-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-outbox"/></svg></span>
+        <h1 id="outbox-title">Outbox</h1>
+        <span id="outbox-badge" class="badge">0</span>
+        <div class="pb-actions"><button id="refresh-messages" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="outbox-content" class="stack" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="memory" class="section" data-view="memory" aria-labelledby="memory-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-memory"/></svg></span>
+        <h1 id="memory-title">Memory</h1>
+        <div class="pb-actions"><button id="refresh-memory" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="memory-content" class="stack" aria-live="polite" aria-busy="true"></div>
+    </section>
+
+    <section id="permissions" class="section" data-view="permissions" aria-labelledby="permissions-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-permissions"/></svg></span>
+        <h1 id="permissions-title">Permissions</h1>
+        <div class="pb-actions">
+          <label class="search-field">
+            <span class="visually-hidden">Who can</span>
+            <input id="who-can-search" type="search" placeholder="Who can send email" autocomplete="off">
+          </label>
+        </div>
+      </header>
+      <div class="tabs" role="tablist" aria-label="Permission sections">
+        <a href="/console/permissions" data-route="permissions" role="tab" aria-selected="true">Roles and grants</a>
+        <a href="/console/permissions/all" data-route="scopes" role="tab" aria-selected="false">Every permission</a>
+      </div>
+      <div id="automode-content" class="stat-cards"></div>
+      <div id="who-can-results" class="who-can-results panel" hidden></div>
+      <div class="card">
+        <header class="title-bar">
+          <span class="tb-icon"><svg class="ic"><use href="#i-roles"/></svg></span>
+          <h2>Roles</h2>
+          <span id="roles-badge" class="badge">0</span>
+          <div class="tb-actions">
+            <form id="new-role-form" class="new-role-form" autocomplete="off">
+              <input name="name" class="new-role-name" placeholder="New role name" aria-label="New role name" required>
+              <button class="button button-primary" type="submit"><svg class="ic"><use href="#i-plus"/></svg>Add role</button>
+            </form>
+          </div>
+        </header>
+        <div id="roles-list" class="row-list roles-list" aria-busy="true"></div>
+      </div>
+    </section>
+
+    <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-permissions"/></svg></span>
+        <h1 id="scopes-title">Permissions</h1>
+      </header>
+      <div class="tabs" role="tablist" aria-label="Permission sections">
+        <a href="/console/permissions" data-route="permissions" role="tab" aria-selected="false">Roles and grants</a>
+        <a href="/console/permissions/all" data-route="scopes" role="tab" aria-selected="true">Every permission</a>
+      </div>
+      <div class="card">
+        <header class="title-bar">
+          <span class="tb-icon"><svg class="ic"><use href="#i-list"/></svg></span>
+          <h2>Every permission</h2>
+          <span id="scopes-badge" class="badge">0</span>
+        </header>
+        <div id="scopes-breakdown" class="scopes-panel" aria-live="polite" aria-busy="true"></div>
+      </div>
     </section>
 
     <section id="people" class="section" data-view="people" aria-labelledby="people-title" hidden>
-      <div class="section-heading">
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-people"/></svg></span>
         <h1 id="people-title">People</h1>
-        <div class="heading-actions">
+        <span id="people-badge" class="badge">0</span>
+        <div class="pb-actions">
           <label class="search-field">
-            <span class="visually-hidden">Search people and scopes</span>
+            <span class="visually-hidden">Search people</span>
             <input id="people-search" type="search" placeholder="Find a person" autocomplete="off">
           </label>
-          <button id="sync-people" class="button button-secondary" type="button">Refresh from Inkbox</button>
-          <button id="add-person" class="button button-primary" type="button">Add person</button>
+          <button id="sync-people" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh from Inkbox</button>
+          <button id="add-person" class="button button-primary" type="button"><svg class="ic"><use href="#i-plus"/></svg>Add person</button>
         </div>
-      </div>
-      <div class="tabs" role="tablist" aria-label="People sections">
-        <a href="/console/people" data-route="people" role="tab" aria-selected="true">People</a>
-        <a href="/console/people/roles" data-route="roles" role="tab" aria-selected="false">Roles</a>
-        <a href="/console/people/groups" data-route="groups" role="tab" aria-selected="false">Group chats</a>
-      </div>
+      </header>
       <div class="people-layout">
         <div class="people-pane panel">
           <div class="people-switch" role="group" aria-label="People list">
@@ -123,78 +286,50 @@
       </div>
     </section>
 
-    <section id="roles" class="section" data-view="roles" aria-labelledby="roles-title" hidden>
-      <div class="section-heading">
-        <h1 id="roles-title">People</h1>
-        <div class="heading-actions">
-          <label class="search-field">
-            <span class="visually-hidden">Who can</span>
-            <input id="who-can-search" type="search" placeholder="Who can send email" autocomplete="off">
-          </label>
-          <form id="new-role-form" class="new-role-form" autocomplete="off">
-            <input name="name" class="new-role-name" placeholder="New role name" aria-label="New role name" required>
-            <button class="button button-primary" type="submit">Add role</button>
-          </form>
-        </div>
-      </div>
-      <div class="tabs" role="tablist" aria-label="People sections">
-        <a href="/console/people" data-route="people" role="tab" aria-selected="false">People</a>
-        <a href="/console/people/roles" data-route="roles" role="tab" aria-selected="true">Roles</a>
-        <a href="/console/people/groups" data-route="groups" role="tab" aria-selected="false">Group chats</a>
-      </div>
-      <div id="who-can-results" class="who-can-results panel" hidden></div>
-      <div id="roles-list" class="panel row-list roles-list" aria-busy="true"></div>
+    <section id="groups" class="section" data-view="groups" aria-labelledby="groups-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-groups"/></svg></span>
+        <h1 id="groups-title">Group chats</h1>
+        <span id="groups-badge" class="badge">0</span>
+        <div class="pb-actions"><button id="refresh-groups" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="groups-list" class="group-cards" aria-live="polite" aria-busy="true"></div>
     </section>
 
-    <section id="groups" class="section" data-view="groups" aria-labelledby="groups-title" hidden>
-      <div class="section-heading">
-        <h1 id="groups-title">People</h1>
-        <div class="heading-actions">
-          <button id="refresh-groups" class="button button-quiet" type="button">Refresh</button>
-        </div>
-      </div>
-      <div class="tabs" role="tablist" aria-label="People sections">
-        <a href="/console/people" data-route="people" role="tab" aria-selected="false">People</a>
-        <a href="/console/people/roles" data-route="roles" role="tab" aria-selected="false">Roles</a>
-        <a href="/console/people/groups" data-route="groups" role="tab" aria-selected="true">Group chats</a>
-      </div>
-      <div id="groups-list" class="panel row-list groups-list" aria-live="polite" aria-busy="true"></div>
+    <section id="pages" class="section" data-view="pages" aria-labelledby="pages-title" hidden>
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-pages"/></svg></span>
+        <h1 id="pages-title">Pages</h1>
+        <span id="pages-badge" class="badge">0</span>
+        <div class="pb-actions"><button id="refresh-pages" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+      <div id="pages-content" class="stack" aria-live="polite" aria-busy="true"></div>
     </section>
 
     <section id="settings" class="section" data-view="settings" aria-labelledby="settings-title" hidden>
-      <div class="section-heading">
+      <header class="page-bar">
+        <span class="pb-icon"><svg class="ic"><use href="#i-settings"/></svg></span>
         <h1 id="settings-title">Settings</h1>
-        <div class="heading-actions">
-          <button id="refresh-health" class="button button-quiet" type="button">Refresh</button>
-        </div>
-      </div>
+        <div class="pb-actions"><button id="refresh-health" class="button button-secondary" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
       <div id="health-content" class="system-block" aria-busy="true"></div>
       <div id="settings-list" class="settings-list" aria-live="polite" aria-busy="true"></div>
-    </section>
-
-    <section id="scopes" class="section" data-view="scopes" aria-labelledby="scopes-title" hidden>
-      <div class="section-heading">
-        <h1 id="scopes-title">Every permission</h1>
-        <div class="heading-actions">
-          <a class="button button-quiet" href="/console/settings" data-route="settings">Back to settings</a>
-        </div>
-      </div>
-      <div id="scopes-breakdown" class="panel scopes-panel" aria-live="polite" aria-busy="true"></div>
     </section>
   </main>
 
   <dialog id="card-detail-dialog" class="ledger-dialog" aria-labelledby="card-detail-title">
-    <div class="dialog-head"><h2 id="card-detail-title">Details</h2><button class="close-button" type="button" data-close-dialog="card-detail-dialog">Close</button></div>
+    <div class="dialog-head"><span class="tb-icon"><svg class="ic"><use href="#i-runs"/></svg></span><h2 id="card-detail-title">Details</h2><button class="close-button" type="button" data-close-dialog="card-detail-dialog">Close</button></div>
     <div id="card-detail-body" class="card-detail-body"></div>
   </dialog>
 
   <dialog id="task-dialog" class="ledger-dialog">
     <div class="dialog-head">
-      <div>
-        <span id="ledger-id" class="mono muted"></span>
-        <h2 id="ledger-title">Task ledger</h2>
+      <span class="tb-icon"><svg class="ic"><use href="#i-tasks"/></svg></span>
+      <div class="dialog-titles">
+        <span id="ledger-id" class="badge"></span>
+        <h2 id="ledger-title">Session</h2>
       </div>
-      <button class="close-button" type="button" data-close-dialog="task-dialog" aria-label="Close ledger">Close</button>
+      <button class="close-button" type="button" data-close-dialog="task-dialog" aria-label="Close session">Close</button>
     </div>
     <div id="ledger-content" class="ledger-content"></div>
   </dialog>
@@ -202,6 +337,7 @@
   <dialog id="schedule-dialog" class="ledger-dialog schedule-dialog">
     <form id="schedule-form">
       <div class="dialog-head">
+        <span class="tb-icon"><svg class="ic"><use href="#i-schedule"/></svg></span>
         <h2 id="schedule-dialog-title">New schedule</h2>
         <button class="close-button" type="button" data-close-dialog="schedule-dialog">Close</button>
       </div>
@@ -226,6 +362,7 @@
   <dialog id="repair-dialog" class="ledger-dialog schedule-dialog">
     <form id="repair-form">
       <div class="dialog-head">
+        <span class="tb-icon"><svg class="ic"><use href="#i-schedule"/></svg></span>
         <h2 id="repair-dialog-title">Repair and resume</h2>
         <button class="close-button" type="button" data-close-dialog="repair-dialog">Close</button>
       </div>
@@ -243,12 +380,13 @@
 
   <dialog id="shortcuts-dialog" class="shortcuts-dialog">
     <div class="dialog-head">
+      <span class="tb-icon"><svg class="ic"><use href="#i-keyboard"/></svg></span>
       <h2>Keyboard</h2>
       <button class="close-button" type="button" data-close-dialog="shortcuts-dialog" aria-label="Close shortcuts">Close</button>
     </div>
     <dl class="shortcut-list">
       <div><dt><kbd>/</kbd></dt><dd>Search people</dd></div>
-      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move through Waiting on you</dd></div>
+      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move through approvals</dd></div>
       <div><dt><kbd>y</kbd></dt><dd>Approve the selected request</dd></div>
       <div><dt><kbd>n</kbd></dt><dd>Decline the selected request</dd></div>
       <div><dt><kbd>?</kbd></dt><dd>Show this reference</dd></div>
@@ -263,6 +401,6 @@
     </fieldset>
   </template>
 
-  <script type="module" src="/static/console.js?v=slim20261116"></script>
+  <script type="module" src="/static/console.js?v=loop20261117"></script>
 </body>
 </html>

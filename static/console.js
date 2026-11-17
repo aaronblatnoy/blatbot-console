@@ -40,7 +40,7 @@ const state = {
   reconnectTimer: null,
   reconnectAttempt: 0,
   noticeTimer: null,
-  activeView: 'home',
+  activeView: 'overview',
   taskId: null,
   loaded: Object.create(null),
   invalidated: Object.create(null),
@@ -48,25 +48,33 @@ const state = {
 };
 
 const VIEW_PATHS = {
-  home: '/console/',
-  activity: '/console/activity',
-  messages: '/console/messages',
-  schedules: '/console/schedules',
+  overview: '/console/',
+  approvals: '/console/approvals',
+  runs: '/console/runs',
+  inbox: '/console/inbox',
+  timers: '/console/timers',
+  memory: '/console/memory',
+  permissions: '/console/permissions',
+  scopes: '/console/permissions/all',
+  outbox: '/console/outbox',
   people: '/console/people',
-  roles: '/console/people/roles',
-  groups: '/console/people/groups',
+  groups: '/console/groups',
+  pages: '/console/pages',
   settings: '/console/settings',
-  scopes: '/console/scopes',
 };
 // Pages that live under another menu item: the menu marks the parent as current.
-const NAV_PARENT = { roles: 'people', groups: 'people', scopes: 'settings' };
-const VIEW_TITLES = { home: 'Home', activity: 'Activity', messages: 'Messages', schedules: 'Schedules', people: 'People', roles: 'Roles', groups: 'Group chats', settings: 'Settings', scopes: 'Every permission' };
-// Pages that were merged into others keep working as links: each old address moves to its new home.
+const NAV_PARENT = { scopes: 'permissions' };
+const VIEW_TITLES = { overview: 'Overview', approvals: 'Approvals', runs: 'Runs', inbox: 'Event inbox', timers: 'Timers', memory: 'Memory',
+  permissions: 'Permissions', scopes: 'Every permission', outbox: 'Outbox', people: 'People', groups: 'Group chats', pages: 'Pages', settings: 'Settings' };
+// Every older address keeps working: each one moves to its new home.
 const OLD_PATHS = {
-  requests: VIEW_PATHS.home, tasks: VIEW_PATHS.activity, roles: VIEW_PATHS.roles, groups: VIEW_PATHS.groups,
-  health: VIEW_PATHS.settings, scopes: VIEW_PATHS.scopes, permissions: VIEW_PATHS.people, activity: VIEW_PATHS.activity,
-  messages: VIEW_PATHS.messages, schedules: VIEW_PATHS.schedules, people: VIEW_PATHS.people, settings: VIEW_PATHS.settings, home: VIEW_PATHS.home,
+  home: VIEW_PATHS.overview, requests: VIEW_PATHS.approvals, activity: VIEW_PATHS.runs, tasks: VIEW_PATHS.runs,
+  messages: VIEW_PATHS.inbox, schedules: VIEW_PATHS.timers, followups: VIEW_PATHS.timers, roles: VIEW_PATHS.permissions,
+  health: VIEW_PATHS.settings, scopes: VIEW_PATHS.scopes, overview: VIEW_PATHS.overview, approvals: VIEW_PATHS.approvals,
+  runs: VIEW_PATHS.runs, inbox: VIEW_PATHS.inbox, timers: VIEW_PATHS.timers, memory: VIEW_PATHS.memory, permissions: VIEW_PATHS.permissions,
+  outbox: VIEW_PATHS.outbox, people: VIEW_PATHS.people, groups: VIEW_PATHS.groups, pages: VIEW_PATHS.pages, settings: VIEW_PATHS.settings,
 };
+const OLD_DEEP_PATHS = { '/console/people/roles': VIEW_PATHS.permissions, '/console/people/groups': VIEW_PATHS.groups, '/console/scopes': VIEW_PATHS.scopes };
 // Plain words for values the backend stores as code names. The stored value is unchanged.
 const CHOICE_WORDS = {
   GATE_EXECUTOR: { claude: 'Claude Code', jev: 'Jev, the fast engine' },
@@ -188,24 +196,25 @@ function scopeChips(scopes = []) {
 
 function routeFromPath(pathname = location.pathname) {
   const path = pathname.replace(/\/+$/, '') || '/console';
-  if (path === '/console') return { view: 'home', taskId: null };
-  for (const prefix of ['/console/activity/', '/console/tasks/']) {
+  if (path === '/console') return { view: 'overview', taskId: null };
+  for (const prefix of ['/console/runs/', '/console/activity/', '/console/tasks/']) {
     if (path.startsWith(prefix)) {
       const encodedId = path.slice(prefix.length);
       let taskId = encodedId;
       try { taskId = decodeURIComponent(encodedId); } catch { /* keep the raw id */ }
-      const canonical = `${VIEW_PATHS.activity}/${encodeURIComponent(taskId)}`;
-      return { view: 'activity', taskId, redirect: path === canonical ? null : canonical };
+      const canonical = `${VIEW_PATHS.runs}/${encodeURIComponent(taskId)}`;
+      return { view: 'runs', taskId, redirect: path === canonical ? null : canonical };
     }
   }
   const view = Object.keys(VIEW_PATHS).find(name => VIEW_PATHS[name].replace(/\/+$/, '') === path);
   if (view) return { view, taskId: null };
+  if (OLD_DEEP_PATHS[path]) return { ...routeFromPath(OLD_DEEP_PATHS[path]), redirect: OLD_DEEP_PATHS[path] };
   const old = path.match(/^\/console\/([a-z]+)$/);
   if (old && OLD_PATHS[old[1]]) {
     const target = OLD_PATHS[old[1]];
     return { ...routeFromPath(target), redirect: target };
   }
-  return { view: 'home', taskId: null, unknown: true };
+  return { view: 'overview', taskId: null, unknown: true };
 }
 
 // A bookmark with an old #page address goes to that page's new home.
@@ -219,8 +228,8 @@ function updateWaitingCount() {
   const navBadge = $('#nav-waiting-count');
   navBadge.hidden = !count;
   navBadge.textContent = count;
-  const homeCount = $('#home-waiting-count');
-  if (homeCount) homeCount.textContent = count;
+  const approvalsCount = $('#approvals-count');
+  if (approvalsCount) { approvalsCount.textContent = count; approvalsCount.className = `badge${count ? ' tone-waiting' : ''}`; }
 }
 
 async function refreshWaitingCount() {
@@ -232,21 +241,26 @@ async function refreshWaitingCount() {
 
 async function loadView(view = state.activeView, { force = false } = {}) {
   if (!force && state.loaded[view] && !state.invalidated[view]) {
-    if (view === 'activity' && state.taskId) await openTask(state.taskId);
+    if (view === 'runs' && state.taskId) await openTask(state.taskId);
     return;
   }
   try {
-    if (view === 'home') await refreshHome({ throwOnError: true });
-    if (view === 'activity') await refreshActivity({ throwOnError: true });
-    if (view === 'people') await refreshPeople({ throwOnError: true });
-    if (view === 'roles') await refreshRoles({ throwOnError: true });
-    if (view === 'scopes') await refreshScopesBreakdown({ throwOnError: true });
-    if (view === 'schedules') await refreshSchedules({ throwOnError: true });
-    if (view === 'groups') await refreshGroups({ throwOnError: true });
-    if (view === 'settings') await Promise.all([refreshSettings({ throwOnError: true }), refreshHealth({ throwOnError: true })]);
-    if (view === 'messages') await refreshMessages({ throwOnError: true });
+    const t = { throwOnError: true };
+    if (view === 'overview') await refreshHome(t);
+    if (view === 'approvals') await refreshApprovals(t);
+    if (view === 'runs') await refreshActivity(t);
+    if (view === 'inbox' || view === 'outbox') await refreshMessages(t);
+    if (view === 'timers') await Promise.all([refreshSchedules(t), refreshMessages(t)]);
+    if (view === 'memory') await refreshMemory(t);
+    if (view === 'permissions') await Promise.all([refreshRoles(t), refreshSettings(t)]);
+    if (view === 'scopes') await refreshScopesBreakdown(t);
+    if (view === 'people') await refreshPeople(t);
+    if (view === 'groups') await refreshGroups(t);
+    if (view === 'pages') await refreshPages(t);
+    if (view === 'settings') await Promise.all([refreshSettings(t), refreshHealth(t)]);
+    state.loaded[view] = true; state.invalidated[view] = false;
     setStarting(false);
-    if (view === 'activity' && state.taskId) await openTask(state.taskId);
+    if (view === 'runs' && state.taskId) await openTask(state.taskId);
   } catch (error) {
     if (error.status === 503) {
       setStarting(true, error.message || 'The console will retry when the API is ready.');
@@ -255,7 +269,13 @@ async function loadView(view = state.activeView, { force = false } = {}) {
       return;
     }
     setStarting(false);
-    showNotice(`Could not load ${view}: ${error.message}`, 'error', 0);
+    if (!(error instanceof ApiError) && !state.retriedNetwork?.[view]) {
+      // A dropped connection on first load: try once more before showing an error.
+      state.retriedNetwork = { ...(state.retriedNetwork || {}), [view]: true };
+      window.setTimeout(() => loadView(view, { force: true }), 1500);
+      return;
+    }
+    showNotice(`Could not load ${VIEW_TITLES[view] || view}: ${error.message}`, 'error', 0);
     renderUnavailable();
   }
 }
@@ -263,13 +283,13 @@ async function loadView(view = state.activeView, { force = false } = {}) {
 async function loadSnapshot({ quiet = false } = {}) {
   state.invalidated[state.activeView] = true;
   const loads = [loadView(state.activeView, { force: true })];
-  if (state.activeView !== 'home') loads.push(refreshWaitingCount());
+  if (state.activeView !== 'overview') loads.push(refreshWaitingCount());
   await Promise.all(loads);
   if (!quiet) showNotice('Console refreshed.');
 }
 
 function renderUnavailable() {
-  for (const selector of ['#home-content', '#activity-list', '#people-list', '#groups-list', '#health-content', '#settings-list', '#messages-content']) {
+  for (const selector of ['#home-content', '#approvals-content', '#activity-list', '#inbox-content', '#outbox-content', '#memory-content', '#pages-content', '#people-list', '#groups-list', '#health-content', '#settings-list']) {
     const target = $(selector);
     if (target && !target.children.length) target.innerHTML = '<div class="empty-state">Data is not available yet.</div>';
   }
@@ -315,14 +335,34 @@ async function refreshHome({ throwOnError = false } = {}) {
         }
       } catch { /* Keep the overview usable if schedule details are unavailable. */ }
     }
-    state.loaded.home = true;
-    state.invalidated.home = false;
+    state.loaded.overview = true;
+    state.invalidated.overview = false;
     renderHome();
-    refreshPulse();
+    refreshLoopData();
   } catch (error) {
     if (throwOnError) throw error;
-    showNotice(`Home not refreshed: ${error.message}`, 'error');
+    showNotice(`Overview not refreshed: ${error.message}`, 'error');
   }
+}
+
+// The loop diagram's counts come from several read-only endpoints; any that fail leave their node at its last value.
+async function refreshLoopData() {
+  const get = path => api(path).catch(() => null);
+  const [health, followups, schedules, memory, summary, groups, directory, settings] = await Promise.all([
+    get('/health'), get('/followups'), get('/schedules'), get('/memory'), state.rolesSummary ? state.rolesSummary : get('/roles/summary'),
+    get('/groups'), get('/people/directory'), state.settings.length ? state.settings : get('/settings')]);
+  if (health) state.health = health;
+  if (followups) state.followups = followups;
+  if (schedules) state.schedules = schedules.schedules || state.schedules;
+  if (memory) state.memory = memory;
+  if (summary) state.rolesSummary = summary;
+  if (groups) state.groups = groups.groups || state.groups;
+  if (directory) { state.people = directory.people || state.people; state.contactKinds = directory.contact_kinds || state.contactKinds; }
+  if (Array.isArray(settings)) state.settings = settings;
+  const slot = $('#loop-slot');
+  if (slot) slot.innerHTML = loopHTML();
+  updateMessagesBadge();
+  updateNavCounts();
 }
 
 // Overview wording comes from the API; legacy missing reasons are resolved
@@ -336,12 +376,13 @@ function homeActionButtons(actions) {
     .join('');
 }
 
-function homeSection(id, title, count, body, { link = '', linkLabel = '', tone = '' } = {}) {
-  return `<section class="home-block home-${id}${tone ? ` is-${tone}` : ''}" aria-labelledby="home-${id}-title">
-    <header class="block-head">
+function homeSection(id, title, count, body, { link = '', linkLabel = '', tone = '', icon: iconName = 'list' } = {}) {
+  return `<section class="card home-block home-${id}" aria-labelledby="home-${id}-title">
+    <header class="title-bar">
+      <span class="tb-icon${tone ? ` tone-${tone}` : ''}">${icon(iconName)}</span>
       <h2 id="home-${id}-title">${escapeHTML(title)}</h2>
-      <span class="block-count"${id === 'waiting' ? ' id="home-waiting-count"' : ''}>${escapeHTML(count)}</span>
-      ${link ? `<a class="button button-quiet button-small" href="${VIEW_PATHS[link]}" data-route="${link}">${escapeHTML(linkLabel)}</a>` : ''}
+      <span class="badge${tone && count ? ` tone-${tone}` : ''}"${id === 'waiting' ? ' id="home-waiting-count"' : ''}>${escapeHTML(count)}</span>
+      ${link ? `<div class="tb-actions"><a class="button button-secondary button-small" href="${VIEW_PATHS[link]}" data-route="${link}">${escapeHTML(linkLabel)}</a></div>` : ''}
     </header>
     ${body}
   </section>`;
@@ -349,17 +390,27 @@ function homeSection(id, title, count, body, { link = '', linkLabel = '', tone =
 
 function homeWaitingBlock() {
   const waiting = pendingRequests();
-  state.selectedWaiting = Math.max(0, Math.min(state.selectedWaiting, waiting.length - 1));
+  const row = request => {
+    const message = cleanText(request.original_message);
+    const who = request.sender_name || request.sender || 'Someone';
+    const ask = request.outcome?.ask?.question ? request.outcome.ask.question.replace(/^Asked you:\s*/, '') : '';
+    return `<div class="row approval-row" data-request-id="${escapeHTML(request.id)}">
+      <div class="row-lead">${avatar(who)}<div class="row-main"><span class="row-title">${escapeHTML(clean(request.summary) || message.text || 'No summary')}</span>
+        <span class="row-meta">${channelMark(request.surface)}<span class="badge tone-waiting">#${escapeHTML(request.id)}</span><span class="pill">${escapeHTML(who)}</span>${message.group ? `<span class="pill">${escapeHTML(message.group)}</span>` : ''}${ask ? `<span class="outcome-pill outcome-asked">${icon('approvals')}<span>${escapeHTML(ask)}</span></span>` : ''}</span></div></div>
+      <div class="row-actions"><button class="button button-primary button-small" type="button" data-decision="yes">Approve</button><button class="button button-secondary button-small" type="button" data-decision="no">Decline</button></div>
+    </div>`;
+  };
   return homeSection('waiting', 'Waiting on you', waiting.length,
-    `<div id="waiting-list" class="panel waiting-list">${waiting.length ? waiting.map((request, index) => requestCard(request, index)).join('') : '<p class="empty-line">Nothing is waiting on you.</p>'}</div>`,
-    { tone: waiting.length ? 'waiting' : '' });
+    waiting.length ? `<div class="row-list">${waiting.map(row).join('')}</div>`
+      : `<div class="approval-empty"><span class="tb-icon">${icon('done')}</span><span>Nothing is waiting on you.</span></div>`,
+    { tone: 'waiting', icon: 'approvals', link: 'approvals', linkLabel: 'Open approvals' });
 }
 
 function homeStuckBlock() {
   // Approvals already sit in Waiting on you with their full card; Stuck lists the rest.
   const pendingIds = new Set(pendingRequests().map(request => String(request.id)));
   const rows = (state.overview?.stuck || []).filter(row => !(row.kind === 'approval' && pendingIds.has(String(row.id))));
-  return homeSection('stuck', 'Stuck', rows.length, `<div class="panel">${rows.length
+  return homeSection('stuck', 'Stuck', rows.length, `<div>${rows.length
     ? `<ul class="row-list">${rows.map(row => `<li class="row stuck-row">
           <div class="row-main">
             <p class="row-title">${escapeHTML(clean(row.sentence))}</p>
@@ -367,39 +418,39 @@ function homeStuckBlock() {
           </div>
           <div class="row-actions">${homeActionButtons(row.actions)}</div>
         </li>`).join('')}</ul>`
-    : '<p class="empty-line">Nothing is stuck.</p>'}</div>`, { tone: rows.length ? 'failed' : '' });
+    : '<p class="empty-line">Nothing is stuck.</p>'}</div>`, { tone: 'failed', icon: 'stuck' });
 }
 
 function homeRunningBlock() {
   const rows = state.overview?.running || [];
-  return homeSection('running', 'Running', rows.length, `<div class="panel">${rows.length
+  return homeSection('running', 'Running', rows.length, `<div>${rows.length
     ? `<ul class="row-list">${rows.map(row => `<li class="row">
           <span class="state state-running">Running</span>
           <div class="row-main"><p class="row-title">${escapeHTML(clean(row.sentence))}</p>${row.latest_step ? `<span class="row-meta">${escapeHTML(row.latest_step)}</span>` : ''}</div>
           <span class="row-time">${escapeHTML(row.started_text || '')}</span>
         </li>`).join('')}</ul>`
-    : '<p class="empty-line">Nothing is running.</p>'}</div>`, { link: 'activity', linkLabel: 'Activity' });
+    : '<p class="empty-line">Nothing is running.</p>'}</div>`, { link: 'runs', linkLabel: 'Runs', tone: 'running', icon: 'running' });
 }
 
 function homeDoneTodayBlock() {
   const rows = state.overview?.done_today || [];
-  return homeSection('done', 'Done today', rows.length, `<div class="panel">${rows.length
+  return homeSection('done', 'Done today', rows.length, `<div>${rows.length
     ? `<ul class="row-list">${rows.map(row => `<li class="row">
           <span class="state state-${HOME_OUTCOME_STATE[row.outcome] || 'neutral'}">${escapeHTML(HOME_OUTCOME_WORD[row.outcome] || row.outcome)}</span>
           <div class="row-main"><p class="row-title">${escapeHTML(clean(row.sentence))}</p></div>
           <span class="row-time">${escapeHTML(shortTimeText(row.time_text))}</span>
         </li>`).join('')}</ul>`
-    : '<p class="empty-line">Nothing finished today yet.</p>'}</div>`, { link: 'activity', linkLabel: 'Activity' });
+    : '<p class="empty-line">Nothing finished today yet.</p>'}</div>`, { link: 'runs', linkLabel: 'Runs', tone: 'done', icon: 'done' });
 }
 
 function homeComingUpBlock() {
   const rows = state.overview?.coming_up || [];
-  return homeSection('coming', 'Coming up', rows.length, `<div class="panel">${rows.length
+  return homeSection('coming', 'Coming up', rows.length, `<div>${rows.length
     ? `<ul class="row-list">${rows.map(s => `<li class="row">
           <div class="row-main"><p class="row-title">${escapeHTML(s.title)}</p><span class="row-meta">${escapeHTML(sentenceCase(s.cadence_text))}</span></div>
           <span class="row-time">${escapeHTML(shortTimeText(s.next_run_text))}</span>
         </li>`).join('')}</ul>`
-    : '<p class="empty-line">Nothing scheduled.</p>'}</div>`, { link: 'schedules', linkLabel: 'Schedules' });
+    : '<p class="empty-line">Nothing scheduled.</p>'}</div>`, { link: 'timers', linkLabel: 'Timers', icon: 'coming' });
 }
 
 // "Mon Nov 16, 9:57 PM EST" reads as just the time when it is today.
@@ -429,7 +480,7 @@ async function homeAction(action) {
       openRepairDialog(target.id);
       return;
     } else if (target.endpoint === 'schedules') {
-      navigate(VIEW_PATHS.schedules);
+      navigate(VIEW_PATHS.timers);
       return;
     } else {
       // An action target this build does not recognize must never fail
@@ -448,26 +499,20 @@ function renderHome() {
   const host = $('#home-content');
   host.setAttribute('aria-busy', 'false');
   if (!state.overview) { host.innerHTML = '<div class="empty-state">Data is not available yet.</div>'; return; }
-  // A live update must not throw away an edit Aaron is typing into a waiting request.
-  const drafts = $$('.request-card', host).map(card => ({ id: card.dataset.requestId, open: !$('.decision-note', card).hidden, text: $('textarea', card)?.value || '' })).filter(d => d.open || d.text);
-  const focusedId = document.activeElement?.closest?.('.request-card textarea') ? document.activeElement.closest('.request-card').dataset.requestId : null;
-  host.innerHTML = `<div id="home-pulse" class="home-pulse">${state.health?.inbox ? pulseHTML() : ''}</div>
+  host.innerHTML = `<section class="card loop-card" aria-labelledby="loop-title">
+      <header class="title-bar"><span class="tb-icon tone-flow">${icon('overview')}</span><h2 id="loop-title">How everything fits together</h2><span class="pill pill-live">${state.streamState === 'live' ? 'Live' : sentenceCase(state.streamState)}</span></header>
+      <div id="loop-slot" class="loop-wrap">${loopHTML()}</div>
+    </section>
     ${homeWaitingBlock()}
-    <div class="home-columns">${homeStuckBlock()}<div class="home-side">${homeRunningBlock()}${homeComingUpBlock()}</div></div>
+    <div class="overview-columns">${homeStuckBlock()}<div class="overview-side">${homeRunningBlock()}${homeComingUpBlock()}</div></div>
     ${homeDoneTodayBlock()}`;
-  drafts.forEach(draft => {
-    const card = $(`.request-card[data-request-id="${CSS.escape(draft.id)}"]`, host);
-    if (!card) return;
-    $('.decision-note', card).hidden = !draft.open;
-    $('[data-show-edit]', card)?.setAttribute('aria-expanded', String(draft.open));
-    $('textarea', card).value = draft.text;
-    if (draft.id === focusedId) $('textarea', card).focus({ preventScroll: true });
-  });
   updateWaitingCount();
+  updateNavCounts();
 }
 
 function renderRequests() {
-  if (state.activeView === 'home' && state.overview) renderHome();
+  if (state.activeView === 'overview' && state.overview) renderHome();
+  else if (state.activeView === 'approvals') renderApprovals();
   else updateWaitingCount();
 }
 
@@ -479,7 +524,7 @@ async function loadScopeLabels() {
     const [scopes, summary] = await Promise.all([api('/scopes'), state.rolesSummary ? state.rolesSummary : api('/roles/summary')]);
     const systems = Object.fromEntries((summary.systems || []).map(sys => [sys.system, sys.system_label]));
     state.scopeLabels = Object.fromEntries(scopes.map(scope => [scope.name, systems[scope.group] || sentenceCase(String(scope.group || scope.name).replace(/_/g, ' '))]));
-    if (state.activeView === 'home' && pendingRequests().some(request => (request.scopes || []).length)) renderHome();
+    if (pendingRequests().some(request => (request.scopes || []).length)) renderRequests();
   } catch { state.scopeLabels = {}; }
   finally { state.scopeLabelsLoading = false; }
 }
@@ -495,13 +540,16 @@ function requestCard(request, index) {
   return `<article class="request-card${index === state.selectedWaiting ? ' is-selected' : ''}" data-request-id="${escapeHTML(request.id)}" data-waiting-index="${index}" data-request-detail="${escapeHTML(request.id)}" role="button" tabindex="0" aria-label="Waiting request from ${escapeHTML(request.sender_name || request.sender)}">
     <div class="request-main">
       <div class="request-who">
-        <div class="sender">${escapeHTML(request.sender_name || request.sender || 'Unknown sender')}</div>
-        <div class="surface">${escapeHTML(where || 'Unknown surface')}</div>
-        <div class="request-id">#${escapeHTML(request.id)} <span class="row-time">${escapeHTML(relativeAge(request.created_at))}</span></div>
+        ${avatar(request.sender_name || request.sender || '?', 'lg')}
+        <div class="request-who-text">
+          <div class="sender">${escapeHTML(request.sender_name || request.sender || 'Unknown sender')}</div>
+          <div class="surface">${channelMark(request.surface)}<span>${escapeHTML(where || 'Unknown surface')}</span></div>
+          <div class="request-id"><span class="badge tone-waiting">#${escapeHTML(request.id)}</span><span class="pill">${escapeHTML(relativeAge(request.created_at))}</span></div>
+        </div>
       </div>
       <div class="request-body">
         <p class="request-summary">${escapeHTML(summary)}</p>
-        ${request.outcome?.ask?.question ? `<p class="request-ask"><span>${request.outcome.ask.kind === 'permission' ? 'Needs your yes' : 'Needs your answer'}</span>${escapeHTML(request.outcome.ask.question.replace(/^Asked you:\s*/, ''))}</p>` : ''}
+        ${request.outcome?.ask?.question ? `<p class="request-ask"><span class="pill tone-waiting">${request.outcome.ask.kind === 'permission' ? 'Needs your yes' : 'Needs your answer'}</span>${escapeHTML(request.outcome.ask.question.replace(/^Asked you:\s*/, ''))}</p>` : ''}
         ${request.scopes?.length ? `<div class="tag-line">${scopeLabelChips(request.scopes)}</div>` : ''}
         ${message.text && message.text !== summary ? `<details class="original-message"><summary>What they wrote</summary><blockquote>${escapeHTML(message.text)}</blockquote></details>` : ''}
       </div>
@@ -539,8 +587,8 @@ async function decide(requestId, decision, note) {
     const detail = actual ? `${error.message} Current state: ${actual}.` : error.message;
     showNotice(`Decision not applied: ${detail}`, 'error', 8000);
   } finally {
-    state.invalidated.activity = true;
-    await refreshHome();
+    state.invalidated.runs = true;
+    if (state.activeView === 'approvals') await refreshApprovals(); else await refreshHome();
   }
 }
 
@@ -549,8 +597,6 @@ async function refreshRoles({ throwOnError = false } = {}) {
     const [summary, directory] = await Promise.all([api('/roles/summary'), api('/people/directory')]);
     state.rolesSummary = summary;
     state.people = directory.people || []; state.unassigned = directory.unlinked || []; state.contactKinds = directory.contact_kinds || [];
-    state.loaded.roles = true;
-    state.invalidated.roles = false;
     renderRolesPage();
   } catch (error) {
     if (throwOnError) throw error;
@@ -583,7 +629,8 @@ function renderPeople() {
   if (state.selectedPerson && !state.people.some(p => p.id === state.selectedPerson) && !state.personDirty) state.selectedPerson = null;
   const people = filteredPeople();
   $('#people-count').textContent = state.search ? `${people.length} of ${state.people.length}` : `${state.people.length}`;
-  $('#people-list').innerHTML = people.length ? people.map(p => `<button type="button" class="person-row${p.id === state.selectedPerson ? ' is-selected' : ''}" role="option" aria-selected="${p.id === state.selectedPerson}" data-person-key="${escapeHTML(p.id)}"><span class="person-name">${escapeHTML(personName(p))}</span><span class="person-role">${escapeHTML(heldRoles(p.role).map(roleLabel).join(', ') || 'No role')}</span><span class="person-impact">${contactsOf(p).length} contact${contactsOf(p).length === 1 ? '' : 's'}</span></button>`).join('') : `<div class="empty-state">${state.people.length ? 'No people match this search.' : 'No people yet'}</div>`;
+  const peopleBadge = $('#people-badge'); if (peopleBadge) peopleBadge.textContent = state.people.length;
+  $('#people-list').innerHTML = people.length ? people.map(p => `<button type="button" class="person-row${p.id === state.selectedPerson ? ' is-selected' : ''}" role="option" aria-selected="${p.id === state.selectedPerson}" data-person-key="${escapeHTML(p.id)}">${avatar(personName(p))}<span class="person-name">${escapeHTML(personName(p))}</span><span class="person-role">${escapeHTML(heldRoles(p.role).map(roleLabel).join(', ') || 'No role')}</span><span class="person-impact">${contactsOf(p).length} contact${contactsOf(p).length === 1 ? '' : 's'}</span></button>`).join('') : `<div class="empty-state">${state.people.length ? 'No people match this search.' : 'No people yet'}</div>`;
   const selected = state.people.find(p => p.id === state.selectedPerson);
   const unassigned = state.unassigned.filter(c => c.kind !== 'name');
   $('#unassigned-count').textContent = unassigned.length;
@@ -596,7 +643,7 @@ function personMet(p) {
   const places = p.met_in || [];
   if (!p.first_seen && !places.length) return '';
   const where = places.length ? `Met in ${places.map(escapeHTML).join(', ')}` : 'Met';
-  return `<p class="person-met muted">${where}${p.first_seen ? ` · first seen ${escapeHTML(formatTime(p.first_seen))}` : ''}</p>`;
+  return `<p class="person-met"><span class="pill">${where}</span>${p.first_seen ? `<span class="pill">First seen ${escapeHTML(formatTime(p.first_seen))}</span>` : ''}</p>`;
 }
 function renderPersonEditor() {
   const p = state.people.find(p => p.id === state.selectedPerson);
@@ -604,11 +651,11 @@ function renderPersonEditor() {
   state.personDirty = false;
   if (!p) { $('#person-editor').innerHTML = '<div class="empty-state">Select a person</div>'; return; }
   const contacts = contactsOf(p);
-  $('#person-editor').innerHTML = `<div class="editor-head"><button type="button" class="button button-quiet button-small" data-person-back>All people</button><h2>${escapeHTML(personName(p))}</h2></div><p id="person-external-change" hidden>Changed elsewhere. <button type="button" class="button button-secondary button-small" data-reload-person>Reload</button></p>
+  $('#person-editor').innerHTML = `<div class="editor-head title-bar"><button type="button" class="button button-quiet button-small" data-person-back>All people</button>${avatar(personName(p), 'lg')}<h2>${escapeHTML(personName(p))}</h2><span class="chan-row">${[...new Set(contacts.map(c => c.kind))].map(kind => channelMark(kind)).join('')}</span></div><p id="person-external-change" hidden>Changed elsewhere. <button type="button" class="button button-secondary button-small" data-reload-person>Reload</button></p>
     <form id="person-form"><label class="field">Name<input name="display" value="${escapeHTML(p.display || '')}"></label><label class="field">Note<textarea name="note" rows="3">${escapeHTML(p.note || '')}</textarea></label><div class="person-save-actions"><button class="button button-primary" type="submit" disabled>Save</button><button class="button button-quiet" type="button" data-discard-person disabled>Discard</button><span id="person-dirty-label" class="row-meta" hidden>Unsaved changes</span></div></form>
-    ${personMet(p)}<h3>Contacts</h3><div id="person-contacts">${contacts.length ? contacts.map(c => `<div class="person-contact" data-contact-id="${escapeHTML(c.id)}"><select aria-label="Contact type" data-contact-kind>${kindOptions(c.kind)}</select><input aria-label="Contact value" data-contact-value value="${escapeHTML(c.raw_value || c.value)}" placeholder="${escapeHTML(contactKind(c.kind).hint)}"><button class="button button-quiet button-small" type="button" data-remove-contact>Remove</button><div class="contact-status" role="status"></div></div>`).join('') : '<p class="empty-line">No contacts.</p>'}</div>
+    ${personMet(p)}${subBar('Contacts', 'user', contacts.length)}<div id="person-contacts">${contacts.length ? contacts.map(c => `<div class="person-contact" data-contact-id="${escapeHTML(c.id)}"><select aria-label="Contact type" data-contact-kind>${kindOptions(c.kind)}</select><input aria-label="Contact value" data-contact-value value="${escapeHTML(c.raw_value || c.value)}" placeholder="${escapeHTML(contactKind(c.kind).hint)}"><button class="button button-quiet button-small" type="button" data-remove-contact>Remove</button><div class="contact-status" role="status"></div></div>`).join('') : '<p class="empty-line">No contacts.</p>'}</div>
     <form id="contact-add-form" class="person-contact"><select aria-label="New contact type" name="kind">${kindOptions()}</select><input name="value" aria-label="New contact value" required placeholder="${escapeHTML((state.contactKinds || []).find(k => k.addable)?.hint || '')}"><button class="button button-secondary button-small" type="submit">Add</button><div class="contact-status" role="status"></div></form>
-    <div class="person-access"><h3>Roles</h3>${personRoleChips(p)}<p class="person-can-text">${escapeHTML(p.can_text || '')}</p><p class="person-can-text-link"><a class="button button-quiet button-small" href="/console/people/roles" data-route="roles">Edit roles</a></p></div>
+    <div class="person-access">${subBar('Roles', 'roles', heldRoles(p.role).length)}${personRoleChips(p)}<p class="person-can-text">${escapeHTML(p.can_text || '')}</p><p class="person-can-text-link"><a class="button button-secondary button-small" href="/console/permissions" data-route="permissions">Edit roles</a></p></div>
     ${p.commander ? '<p class="person-commander-note">This person cannot be deleted or merged into another person here.</p>' : `<details class="person-advanced"><summary>Move or merge</summary><form id="contact-move-form"><label class="field">Contact<select name="contact_id" required><option value="">Choose contact</option>${contacts.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(contactKind(c.kind).label + ' ' + (c.raw_value || c.value))}</option>`).join('')}</select></label><label class="field">To person (or Unassigned)<select name="person_id"><option value="">Unassigned</option>${personOptions(p.id)}</select></label><button class="button button-secondary button-small" type="submit">Move</button></form><form id="person-merge-form"><label class="field">This is the same person as<select name="keep_id" required><option value="">Choose person</option>${personOptions(p.id)}</select></label><p class="row-meta">Their contacts move to that person. Roles and note are not combined.</p><button class="button button-secondary button-small" type="submit">Merge into them</button></form></details><div class="danger-zone"><button class="button button-secondary is-danger" type="button" data-delete-person>Delete person</button></div>`}`;
 }
 function markPersonDirty() {
@@ -640,17 +687,17 @@ async function refreshPeople({throwOnError = false, external = false, localConta
 // Register expected events before the POST: the stream can beat the response.
 async function peoplePost(path, body, matches) {
   const token = {matches, expires: Date.now()+10000}; state.ownEvents.push(token);
-  try { const result = await post(path,body); if(result?.conflict) throw new ApiError('Contact conflict',409,result); state.invalidated.home = true; state.invalidated.roles = true; return result; }
+  try { const result = await post(path,body); if(result?.conflict) throw new ApiError('Contact conflict',409,result); state.invalidated.overview = true; state.invalidated.permissions = true; return result; }
   catch(error) { state.ownEvents = state.ownEvents.filter(t => t !== token); throw error; }
 }
 function handlePeopleEvent(event) {
   let payload; try { payload = JSON.parse(event.data); } catch { payload = {}; }
   state.ownEvents = state.ownEvents.filter(t => t.expires > Date.now());
   const index = state.ownEvents.findIndex(t => t.matches(payload));
-  if(index >= 0) { state.ownEvents.splice(index,1); invalidateView('roles',refreshRoles); invalidateHome(); return; }
+  if(index >= 0) { state.ownEvents.splice(index,1); invalidateView('permissions',refreshRoles); invalidateHome(); return; }
   state.invalidated.people = true;
   if(state.activeView === 'people') refreshPeople({external:true});
-  invalidateView('roles',refreshRoles); invalidateHome();
+  invalidateView('permissions',refreshRoles); invalidateHome();
 }
 async function savePerson(form) {
   if(!state.personDirty || form.dataset.saving) return;
@@ -663,7 +710,7 @@ async function savePerson(form) {
     state.people = state.people.map(p => p.id === person.id ? person : p);
     renderPeople();
     if(state.selectedPerson === id) { state.personDirty = false; renderPersonEditor(); }
-    state.invalidated.roles = true; showNotice('Saved.');
+    state.invalidated.permissions = true; showNotice('Saved.');
   } catch(error) { if(state.selectedPerson === id) { setFormBusy($('#person-editor'),false); markPersonDirty(); } showNotice(`Person not saved: ${error.message}`,'error'); }
   finally { delete form.dataset.saving; }
 }
@@ -672,7 +719,7 @@ async function createPerson(display = '') {
   state.personDirty = false; state.selectedPerson = (p.person || p).id; await refreshPeople(); $('#person-form input')?.focus(); return state.selectedPerson;
 }
 async function immediatePeople(path,body,match) {
-  const result = await peoplePost(path,body,match); await refreshPeople({localContacts:true}); state.invalidated.roles = true; return result;
+  const result = await peoplePost(path,body,match); await refreshPeople({localContacts:true}); state.invalidated.permissions = true; return result;
 }
 function showContactClash(host,error) {
   const payload = error.payload || {};
@@ -781,6 +828,7 @@ function renderScopesBreakdown() {
     return treeNode(escapeHTML(group.system), branches, { cls: 'h-system', title: group.description || '' });
   });
   host.innerHTML = `<div class="h-tree">${treeNode('Blatbot', systems, { cls: 'h-rootnode' })}</div>`;
+  const scopesBadge = $('#scopes-badge'); if (scopesBadge) scopesBadge.textContent = groups.reduce((n, g) => n + (g.scopes || []).length, 0);
 }
 
 function systemBySummary(name) {
@@ -859,8 +907,8 @@ function renderRoleRow(role) {
     : '';
   return `<div class="role-row${isOpen ? ' is-open' : ''}" role="button" tabindex="0" aria-expanded="${isOpen}" aria-label="${escapeHTML(roleLabel(role.name))} details" data-role-name="${escapeHTML(role.name)}">
     <div class="role-row-head">
-      <div class="role-row-title"><h3>${escapeHTML(roleLabel(role.name))}</h3>${role.locked ? '<span class="tag">Built in</span>' : ''}</div>
-      <span class="row-meta role-member-count">${role.member_count} ${role.member_count === 1 ? 'member' : 'members'}</span>
+      <div class="role-row-title"><span class="tb-icon">${icon(role.locked ? 'approvals' : 'roles')}</span><h3>${escapeHTML(roleLabel(role.name))}</h3>${role.locked ? '<span class="pill tone-accent">Built in</span>' : ''}</div>
+      <span class="pill role-member-count">${role.member_count} ${role.member_count === 1 ? 'member' : 'members'}</span>
       <button type="button" class="button button-secondary button-small role-row-toggle" data-toggle-role aria-expanded="${isOpen}">${isOpen ? 'Done' : 'Edit'}</button>
     </div>
     <p class="role-row-can-text">${escapeHTML(role.can_text || '')}</p>
@@ -916,6 +964,8 @@ function renderRolesPage() {
   // fact about the system, not something this list can rearrange or edit.
   const ordered = [...(summary.roles || [])].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
   host.innerHTML = ordered.length ? ordered.map(renderRoleRow).join('') : '<p class="empty-line">No roles yet.</p>';
+  const rolesBadge = $('#roles-badge'); if (rolesBadge) rolesBadge.textContent = ordered.length;
+  renderAutoMode();
   bindWhoCanSearch();
   renderWhoCanResults();
 }
@@ -1059,7 +1109,7 @@ function outcomeLine(outcome) {
   // "Replied with its closing text" is how every run ended before runs chose their own
   // ending, so it says nothing; only the choices a run made are shown.
   if (!outcome || !outcome.text || outcome.kind === 'none') return '';
-  return `<span class="outcome-line outcome-${escapeHTML(outcome.kind)}" title="${escapeHTML(outcome.text)}">${escapeHTML(outcome.text)}</span>`;
+  return outcomePill(outcome);
 }
 
 function relTime(value) {
@@ -1085,26 +1135,40 @@ function pulseHTML() {
   </div>`;
 }
 
+const INBOX_KINDS = [['all', 'All'], ['message', 'Messages'], ['timer', 'Timers'], ['schedule', 'Schedules'], ['webhook', 'Webhooks'], ['approval', 'Your answers']];
+const INBOX_STATUSES = [['all', 'All'], ['open', 'Open'], ['done', 'Done'], ['failed', 'Failed']];
+state.inboxKind = 'all';
+state.inboxStatus = 'all';
+state.outboxStatus = 'all';
+
+function inboxEventMatches(event) {
+  const kindOk = state.inboxKind === 'all' || event.kind === state.inboxKind;
+  const status = event.status === 'pending' || event.status === 'running' ? 'open' : event.status;
+  return kindOk && (state.inboxStatus === 'all' || status === state.inboxStatus);
+}
+
 function inboxLaneHTML(lane) {
   const busy = (lane.counts.pending || 0) + (lane.counts.running || 0);
-  const events = lane.events || [];
+  const events = (lane.events || []).filter(inboxEventMatches);
+  if (!events.length) return '';
   const row = event => `<li class="msg-row">
       ${statePill(event.status === 'pending' ? 'queued' : event.status)}
-      <span class="msg-main"><span class="msg-meta">${escapeHTML([event.kind_label, event.kind === 'timer' ? '' : event.surface, event.where && event.where !== lane.label ? event.where : ''].filter(Boolean).join(', '))}</span><span class="msg-text">${escapeHTML(clean(event.preview) || (event.kind === 'timer' ? 'Checking back on its own' : 'No text'))}</span>${event.error ? `<span class="msg-error">${escapeHTML(event.error)}</span>` : ''}</span>
+      <span class="msg-main"><span class="msg-meta">${event.kind === 'timer' ? `<span class="chan chan-other">${icon('timers')}</span>` : channelMark(event.surface)}<span class="pill">${escapeHTML(event.kind_label)}</span>${event.where && event.where !== lane.label ? `<span class="pill">${escapeHTML(event.where)}</span>` : ''}</span><span class="msg-text">${escapeHTML(clean(event.preview) || (event.kind === 'timer' ? 'Checking back on its own' : 'No text'))}</span>${event.error ? `<span class="msg-error">${escapeHTML(event.error)}</span>` : ''}</span>
       <time title="${escapeHTML(formatTime(event.created_at))}">${escapeHTML(relTime(event.created_at))}</time>
     </li>`;
+  const isGroup = String(lane.lane || '').startsWith('tg:-');
   return `<article class="lane-card${busy ? ' is-busy' : ''}">
-    <header class="lane-head"><strong>${escapeHTML(lane.label)}</strong>
-      <span class="lane-counts">${busy ? `<span class="state state-running">${busy} open</span>` : ''}${lane.counts.failed ? `<span class="state state-failed">${lane.counts.failed} failed</span>` : ''}<span class="muted">${events.length} recent</span></span></header>
-    <ul class="msg-list">${events.slice(0, 3).map(row).join('')}</ul>
-    ${events.length > 3 ? `<details class="lane-more"><summary>Show ${events.length - 3} more</summary><ul class="msg-list">${events.slice(3).map(row).join('')}</ul></details>` : ''}
+    <header class="lane-head"><span class="who-line">${avatar(lane.label, isGroup ? 'group' : '')}<strong>${escapeHTML(lane.label)}</strong></span>
+      <span class="lane-counts">${busy ? `<span class="pill tone-running">${busy} open</span>` : ''}${lane.counts.failed ? `<span class="pill tone-failed">${lane.counts.failed} failed</span>` : ''}<span class="badge">${events.length}</span></span></header>
+    <ul class="msg-list">${events.slice(0, 4).map(row).join('')}</ul>
+    ${events.length > 4 ? `<details class="lane-more"><summary><span class="pill tone-accent">Show ${events.length - 4} more</span></summary><ul class="msg-list">${events.slice(4).map(row).join('')}</ul></details>` : ''}
   </article>`;
 }
 
 function outboxRowHTML(row) {
   return `<li class="msg-row${row.status === 'failed' ? ' is-failed' : row.status === 'held' ? ' is-held' : ''}">
     ${statePill(row.status)}
-    <span class="msg-main"><span class="msg-meta"><strong>${escapeHTML(row.to)}</strong>${escapeHTML([row.surface, row.kind_label].filter(Boolean).map(x => `, ${x}`).join(''))}</span><span class="msg-text">${escapeHTML(row.preview || 'No text')}</span>${row.error ? `<span class="msg-error">${escapeHTML(row.error)}</span>` : ''}</span>
+    <span class="msg-main"><span class="msg-meta">${channelMark(row.surface)}<strong>${escapeHTML(row.to)}</strong>${row.kind_label ? `<span class="pill">${escapeHTML(row.kind_label)}</span>` : ''}${row.attempts > 1 ? `<span class="pill tone-waiting">${escapeHTML(row.attempts)} tries</span>` : ''}</span><span class="msg-text">${escapeHTML(clean(row.preview) || 'No text')}</span>${row.error ? `<span class="msg-error">${escapeHTML(row.error)}</span>` : ''}</span>
     <time title="${escapeHTML(formatTime(row.sent_at || row.created_at))}">${escapeHTML(relTime(row.sent_at || row.created_at))}</time>
   </li>`;
 }
@@ -1112,37 +1176,98 @@ function outboxRowHTML(row) {
 function followupRowHTML(row) {
   return `<li class="msg-row">
     ${statePill(row.status)}
-    <span class="msg-main"><span class="msg-meta"><strong>${escapeHTML(row.for)}</strong>${row.task_id ? `, task T${escapeHTML(row.task_id)}` : ''}</span><span class="msg-text">${escapeHTML(row.note || 'Check back')}</span>${row.result ? `<span class="msg-meta">${escapeHTML(row.result)}</span>` : ''}</span>
+    <span class="msg-main"><span class="msg-meta">${avatar(row.for)}<strong>${escapeHTML(row.for)}</strong>${row.task_id ? `<span class="badge">T${escapeHTML(row.task_id)}</span>` : ''}</span><span class="msg-text">${escapeHTML(row.note || 'Check back')}</span>${row.result ? `<span class="msg-meta">${escapeHTML(row.result)}</span>` : ''}</span>
     <time title="${escapeHTML(formatTime(row.due_at))}">${escapeHTML(row.status === 'pending' ? relTime(row.due_at) : relTime(row.fired_at || row.due_at))}</time>
   </li>`;
 }
 
-function renderMessages() {
-  const host = $('#messages-content');
+function segmentedHTML(name, options, current, counts = {}) {
+  return `<div class="segmented" role="group" aria-label="${escapeHTML(name)}">${options.map(([value, label]) => `<button type="button" data-seg="${escapeHTML(name)}" data-value="${escapeHTML(value)}" aria-pressed="${value === current}">${escapeHTML(label)}${counts[value] != null ? ` <span class="seg-count">${escapeHTML(counts[value])}</span>` : ''}</button>`).join('')}</div>`;
+}
+
+function renderInbox() {
+  const host = $('#inbox-content');
+  if (!host) return;
   host.setAttribute('aria-busy', 'false');
+  const counts = state.inbox?.counts || {};
   const lanes = state.inbox?.lanes || [];
+  const all = lanes.flatMap(lane => lane.events || []);
+  const kindCounts = { all: all.length };
+  all.forEach(event => { kindCounts[event.kind] = (kindCounts[event.kind] || 0) + 1; });
+  const kinds = INBOX_KINDS.filter(([value]) => value === 'all' || kindCounts[value]);
+  const open = (counts.pending || 0) + (counts.running || 0);
+  $('#inbox-badge').textContent = open; $('#inbox-badge').className = `badge${open ? ' tone-running' : ''}`;
+  const lanesHTML = lanes.map(inboxLaneHTML).filter(Boolean);
+  host.innerHTML = `<div class="stat-cards">
+      ${statCard({ label: 'Waiting', icon: 'inbox', value: counts.pending || 0, tone: counts.pending ? 'waiting' : '' })}
+      ${statCard({ label: 'Being handled', icon: 'running', value: counts.running || 0, tone: counts.running ? 'running' : '' })}
+      ${statCard({ label: 'Done', icon: 'done', value: counts.done || 0, tone: 'done' })}
+      ${statCard({ label: 'Failed', icon: 'stuck', value: counts.failed || 0, tone: counts.failed ? 'failed' : '' })}
+      ${statCard({ label: 'Events per hour', icon: 'chart', chart: sparkBars(hourBuckets(all.map(e => e.created_at), 24), 'flow'), axis: ['24h ago', 'Now'] })}
+    </div>
+    <section class="card">
+      <header class="title-bar"><span class="tb-icon">${icon('user')}</span><h2>Lanes by person</h2><span class="badge">${lanes.length}</span>
+        <div class="tb-actions">${segmentedHTML('Source', kinds, state.inboxKind, kindCounts)}${segmentedHTML('Status', INBOX_STATUSES, state.inboxStatus)}</div></header>
+      ${lanesHTML.length ? `<div class="lane-grid card-body">${lanesHTML.join('')}</div>` : `<p class="empty-line">${lanes.length ? 'No events match these filters.' : 'Nothing has come in yet.'}</p>`}
+    </section>`;
+}
+
+function renderOutbox() {
+  const host = $('#outbox-content');
+  if (!host) return;
+  host.setAttribute('aria-busy', 'false');
+  const counts = state.outbox?.counts || {};
   const rank = { failed: 0, held: 1, sending: 2, queued: 3, sent: 4 };
-  const out = [...(state.outbox?.rows || [])].sort((a, b) => (rank[a.status] ?? 5) - (rank[b.status] ?? 5) || b.id - a.id);
+  const rows = [...(state.outbox?.rows || [])].sort((a, b) => (rank[a.status] ?? 5) - (rank[b.status] ?? 5) || b.id - a.id);
+  const shown = rows.filter(row => state.outboxStatus === 'all' || row.status === state.outboxStatus);
+  const trouble = (counts.failed || 0) + (counts.held || 0);
+  const moving = (counts.queued || 0) + (counts.sending || 0);
+  const dispatcher = trouble ? ['Needs you', 'failed'] : moving ? ['Sending', 'running'] : ['Idle', 'done'];
+  $('#outbox-badge').textContent = counts.sent || 0;
+  const cell = (label, value, tone) => `<div class="dispatch-cell"><span class="stat-card-label">${escapeHTML(label)}</span><span class="stat-card-value"${value && tone ? ` style="color:var(--${tone})"` : ''}>${escapeHTML(value || 0)}</span></div>`;
+  const days = dayBuckets(rows.filter(r => r.status === 'sent').map(r => r.sent_at || r.created_at), 14);
+  host.innerHTML = `<section class="card">
+      <header class="title-bar"><span class="tb-icon tone-flow">${icon('dispatcher')}</span><h2>Dispatcher</h2><span class="pill tone-${dispatcher[1]}">${dispatcher[0]}</span></header>
+      <div class="dispatch-strip">${cell('Queued', counts.queued, 'running')}${cell('Sending', counts.sending, 'running')}${cell('Held', counts.held, 'waiting')}${cell('Failed', counts.failed, 'failed')}${cell('Sent', counts.sent, '')}</div>
+    </section>
+    <div class="stat-cards">
+      ${statCard({ label: 'Sends per day', icon: 'chart', value: days.reduce((a, b) => a + b, 0), unit: 'in 14 days', chart: sparkBars(days), axis: ['14 days ago', 'Today'] })}
+      ${statCard({ label: 'Replies', icon: 'outbox', value: rows.filter(r => r.kind === 'reply').length, unit: 'recent' })}
+      ${statCard({ label: 'Notices to you', icon: 'reported', value: rows.filter(r => r.kind === 'notice').length, unit: 'recent' })}
+      ${statCard({ label: 'Approval asks', icon: 'approvals', value: rows.filter(r => r.kind === 'approval').length, unit: 'recent', tone: 'waiting' })}
+    </div>
+    <section class="card">
+      <header class="title-bar"><span class="tb-icon">${icon('outbox')}</span><h2>Outcomes delivered</h2><span class="badge">${shown.length}</span>
+        <div class="tb-actions">${segmentedHTML('Outbox status', [['all', 'All'], ['queued', 'Queued'], ['sending', 'Sending'], ['held', 'Held'], ['failed', 'Failed'], ['sent', 'Sent']], state.outboxStatus, { all: rows.length, ...countBy(rows, 'status') })}</div></header>
+      ${shown.length ? `<ul class="msg-list">${shown.slice(0, 40).map(outboxRowHTML).join('')}</ul>` : '<p class="empty-line">Nothing here.</p>'}
+    </section>`;
+}
+
+function renderFollowups() {
+  const host = $('#followups-content');
+  if (!host) return;
   const timers = state.followups?.rows || [];
-  host.innerHTML = `
-    <div class="messages-grid">
-      <div class="messages-col">
-      <section class="activity-panel" aria-labelledby="inbox-title">
-        <header class="activity-head"><h3 id="inbox-title">Incoming</h3><span class="muted">by person</span></header>
-        ${lanes.length ? `<div class="lane-list">${lanes.map(inboxLaneHTML).join('')}</div>` : '<p class="activity-empty">Nothing has come in yet.</p>'}
-      </section>
-      <section class="activity-panel" aria-labelledby="followups-title">
-        <header class="activity-head"><h3 id="followups-title">Follow-ups</h3><span class="muted">${escapeHTML(state.followups?.pending ?? 0)} set</span></header>
-        ${state.followups && !state.followups.available ? '<p class="activity-empty">Follow-up timers are not available on this server.</p>'
-          : timers.length ? `<ul class="msg-list">${timers.slice(0, 30).map(followupRowHTML).join('')}</ul>` : '<p class="activity-empty">No follow-ups set.</p>'}
-      </section>
-      </div>
-      <section class="activity-panel" aria-labelledby="outbox-title">
-        <header class="activity-head"><h3 id="outbox-title">Outgoing</h3><span class="muted">${escapeHTML(out.length)} recent</span></header>
-        ${out.length ? `<ul class="msg-list">${out.slice(0, 40).map(outboxRowHTML).join('')}</ul>` : '<p class="activity-empty">Nothing has gone out yet.</p>'}
-      </section>
-    </div>`;
+  const pending = state.followups?.pending ?? 0;
+  $('#followups-badge').textContent = pending; $('#followups-badge').className = `badge${pending ? ' tone-running' : ''}`;
+  host.innerHTML = state.followups && !state.followups.available ? '<p class="empty-line">Follow-up timers are off on this server.</p>'
+    : timers.length ? `<ul class="msg-list">${timers.slice(0, 30).map(followupRowHTML).join('')}</ul>` : '<p class="empty-line">No follow-ups set.</p>';
+  updateTimersBadge();
+}
+
+function updateTimersBadge() {
+  const badge = $('#timers-badge');
+  if (!badge) return;
+  const active = (state.schedules || []).filter(sch => sch.state === 'active').length;
+  badge.textContent = active + (state.followups?.pending || 0);
+  const sb = $('#schedules-badge'); if (sb) sb.textContent = (state.schedules || []).length;
+}
+
+function renderMessages() {
+  renderInbox();
+  renderOutbox();
+  renderFollowups();
   updateMessagesBadge();
+  updateNavCounts();
 }
 
 function updateMessagesBadge() {
@@ -1159,7 +1284,6 @@ async function refreshMessages({ throwOnError = false } = {}) {
   try {
     const [inbox, outbox, followups] = await Promise.all([api('/inbox'), api('/outbox'), api('/followups')]);
     Object.assign(state, { inbox, outbox, followups });
-    state.loaded.messages = true; state.invalidated.messages = false;
     renderMessages();
   } catch (error) {
     if (throwOnError) throw error;
@@ -1169,12 +1293,9 @@ async function refreshMessages({ throwOnError = false } = {}) {
 
 async function refreshPulse() {
   try {
-    const [health, followups] = await Promise.all([api('/health'), api('/followups?limit=1')]);
-    state.health = health; state.followups = state.followups?.rows?.length > 1 ? state.followups : followups;
-    const slot = $('#home-pulse');
-    if (slot) slot.innerHTML = pulseHTML();
+    state.health = await api('/health');
     updateMessagesBadge();
-  } catch { /* An older API without these counts keeps Home as it was. */ }
+  } catch { /* An older API without these counts keeps the menu as it was. */ }
 }
 
 // ---- Activity: every task, and every run that is not part of a listed task -----------
@@ -1192,14 +1313,14 @@ function taskStatus(task) {
 function activityRows() {
   const inTasks = new Set(state.tasks.flatMap(task => (task.runs || []).map(run => String(run.id))));
   const tasks = state.tasks.map(task => ({
-    kind: 'task', id: task.id, status: taskStatus(task), title: clean(task.title) || 'Untitled task',
+    kind: 'task', id: task.id, status: taskStatus(task), title: clean(task.title) || 'Untitled task', surface: (task.runs || [])[0]?.surface || '',
     where: cleanText(task.title).group, who: uniqueNames(task.participants || []).join(', '),
     outcome: task.outcome, at: Number(task.updated_at) || 0, runs: (task.runs || []).length,
   }));
   const runs = state.requests.filter(request => !inTasks.has(String(request.id))).map(request => ({
     kind: 'run', id: request.id, status: REQUEST_STATUS[request.state] || 'open',
     title: clean(request.summary) || clean(request.original_message) || 'Run', where: cleanText(request.original_message).group,
-    who: request.sender_name || request.sender || '', outcome: request.outcome, at: Number(request.updated_at || request.created_at) || 0,
+    who: request.sender_name || request.sender || '', outcome: request.outcome, at: Number(request.updated_at || request.created_at) || 0, surface: request.surface,
   }));
   return [...tasks, ...runs].sort((a, b) => b.at - a.at);
 }
@@ -1207,8 +1328,8 @@ function activityRowHTML(row) {
   const attrs = row.kind === 'task' ? `data-task-id="${escapeHTML(row.id)}"` : `data-request-detail="${escapeHTML(row.id)}"`;
   return `<button class="row activity-row" type="button" ${attrs}>
     <span class="state state-${ACTIVITY_STATUS_CLASS[row.status]}">${ACTIVITY_STATUS_WORD[row.status]}</span>
-    <span class="row-main"><span class="row-title">${escapeHTML(row.title)}</span><span class="row-meta">${[row.kind === 'task' ? `T${escapeHTML(row.id)}` : `Run #${escapeHTML(row.id)}`, row.where ? escapeHTML(row.where) : '', row.outcome && row.outcome.kind !== 'none' && row.outcome.text ? `<span class="outcome-${escapeHTML(row.outcome.kind)}">${escapeHTML(row.outcome.text)}</span>` : ''].filter(Boolean).join('<span class="sep"></span>')}</span></span>
-    <span class="row-who">${escapeHTML(row.who)}</span>
+    <span class="row-main"><span class="row-title">${escapeHTML(row.title)}</span><span class="row-meta">${row.surface ? channelMark(row.surface) : ''}<span class="badge">${row.kind === 'task' ? `Session T${escapeHTML(row.id)}` : `Run #${escapeHTML(row.id)}`}</span>${row.kind === 'task' && row.runs ? `<span class="pill">${row.runs} ${row.runs === 1 ? 'run' : 'runs'}</span>` : ''}${row.where ? `<span class="pill">${escapeHTML(row.where)}</span>` : ''}${row.outcome && row.outcome.kind !== 'none' && row.outcome.text ? outcomePill(row.outcome) : ''}</span></span>
+    <span class="row-who">${row.who ? `${avatar(row.who.split(',')[0])}<span>${escapeHTML(row.who)}</span>` : ''}</span>
     <time class="row-time" datetime="${escapeHTML(row.at ? new Date(row.at * 1000).toISOString() : '')}">${escapeHTML(formatTime(row.at))}</time>
   </button>`;
 }
@@ -1223,15 +1344,23 @@ function renderActivity() {
   const shown = rows.filter(row => state.activityFilter === 'all' || row.status === state.activityFilter);
   const limit = state.activityLimit || 40;
   host.innerHTML = shown.length
-    ? shown.slice(0, limit).map(activityRowHTML).join('') + (shown.length > limit ? `<div class="row-list-more"><button type="button" class="button button-quiet" data-activity-more>Show ${Math.min(40, shown.length - limit)} more</button></div>` : '')
-    : `<p class="empty-line">${state.activityFilter === 'all' ? 'No activity yet.' : `Nothing ${ACTIVITY_STATUS_WORD[state.activityFilter].toLowerCase()}.`}</p>`;
+    ? shown.slice(0, limit).map(activityRowHTML).join('') + (shown.length > limit ? `<div class="row-list-more"><button type="button" class="button button-secondary" data-activity-more>Show ${Math.min(40, shown.length - limit)} more</button></div>` : '')
+    : `<p class="empty-line">${state.activityFilter === 'all' ? 'No runs yet.' : `Nothing ${ACTIVITY_STATUS_WORD[state.activityFilter].toLowerCase()}.`}</p>`;
+  const outcomes = countBy(state.requests.map(r => ({ kind: r.outcome?.kind || 'none' })), 'kind');
+  const stats = $('#runs-stats');
+  if (stats) stats.innerHTML = `
+    ${statCard({ label: 'Runs per hour', icon: 'chart', value: state.requests.filter(r => Number(r.created_at) > Date.now() / 1000 - 86400).length, unit: 'today', chart: sparkBars(hourBuckets(state.requests.map(r => r.created_at), 24)), axis: ['24h ago', 'Now'] })}
+    ${statCard({ label: 'Sent', icon: 'outbox', value: outcomes.sent || 0, tone: 'done' })}
+    ${statCard({ label: 'Stayed quiet', icon: 'runs', value: outcomes.quiet || 0 })}
+    ${statCard({ label: 'Deferred to you', icon: 'approvals', value: (outcomes.asked || 0) + (outcomes.deferred || 0), tone: 'waiting', href: VIEW_PATHS.approvals, route: 'approvals' })}
+    ${statCard({ label: 'Did not finish', icon: 'stuck', value: outcomes.failed || 0, tone: outcomes.failed ? 'failed' : '' })}`;
+  updateNavCounts();
 }
 async function refreshActivity({ throwOnError = false } = {}) {
   try {
     const [tasks, ...requests] = await Promise.all([api('/tasks'), ...['pending', 'running', 'done', 'failed'].map(requestState => api(`/requests?state=${requestState}`))]);
     state.tasks = tasks;
     state.requests = requests.flat().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    state.loaded.activity = true; state.invalidated.activity = false;
     renderActivity();
     updateWaitingCount();
   } catch (error) {
@@ -1246,15 +1375,15 @@ function renderLedger(task) {
   const events = Array.isArray(task.events) ? task.events : [];
   const host = $('#ledger-content');
   const runs = Array.isArray(task.runs) ? task.runs : [];
-  const runsHTML = runs.length ? `<section class="ledger-runs"><h3>Runs</h3><ul class="msg-list panel">${runs.map(run => `<li class="msg-row">${statePill(run.state)}<span class="msg-main"><span class="msg-meta">#${escapeHTML(run.id)}</span><span class="msg-text">${escapeHTML(clean(run.summary) || 'Run')}</span>${outcomeLine(run.outcome)}</span><time>${escapeHTML(relTime(run.created_at))}</time></li>`).join('')}</ul></section>` : '';
+  const runsHTML = runs.length ? `<section class="ledger-runs card">${subBar('Runs in this session', 'runs', runs.length)}<ul class="msg-list">${runs.map(run => `<li class="msg-row">${statePill(run.state)}<span class="msg-main"><span class="msg-meta">${channelMark(run.surface)}<span class="badge">#${escapeHTML(run.id)}</span></span><span class="msg-text">${escapeHTML(clean(run.summary) || 'Run')}</span>${outcomeLine(run.outcome)}</span><time>${escapeHTML(relTime(run.created_at))}</time></li>`).join('')}</ul></section>` : '';
   if (!events.length) { host.innerHTML = runsHTML || 'No ledger entries recorded.'; return; }
   host.innerHTML = runsHTML + events.map(event => {
     const when = event.created_at ? new Date(event.created_at * 1000).toISOString() : '';
     return `<article class="ledger-entry">
       <header class="ledger-meta">
-        <span class="ledger-kind ledger-kind-${escapeHTML(event.kind || 'note')}">${escapeHTML(stateWord(event.kind || 'note'))}</span>
+        <span class="pill ledger-kind ledger-kind-${escapeHTML(event.kind || 'note')}">${escapeHTML(stateWord(event.kind || 'note'))}</span>
         <time datetime="${escapeHTML(when)}">${escapeHTML(formatTime(event.created_at))}</time>
-        ${event.request_id ? `<span class="mono">#${escapeHTML(event.request_id)}</span>` : ''}
+        ${event.request_id ? `<span class="badge">#${escapeHTML(event.request_id)}</span>` : ''}
       </header>
       <div class="ledger-text">${escapeHTML(cleanText(event.text).group ? `${cleanText(event.text).group}: ${clean(event.text)}` : (event.text || ''))}</div>
     </article>`;
@@ -1271,7 +1400,7 @@ async function openTask(taskId) {
     renderLedger(cached);
     return;
   }
-  $('#ledger-title').textContent = 'Loading ledger…';
+  $('#ledger-title').textContent = 'Loading session';
   $('#ledger-content').textContent = '';
   try {
     const task = await api(`/tasks/${encodeURIComponent(taskId)}`);
@@ -1297,21 +1426,21 @@ function renderHealth() {
   const tunnelUp = tunnel === 'up' || tunnel === true || (tunnel && tunnel.connected === true);
   const tunnelWhere = tunnel && typeof tunnel === 'object' ? (tunnel.url || tunnel.mode || '') : '';
   const line = item => escapeHTML(typeof item === 'string' ? item : (item?.text || item?.message || JSON.stringify(item)));
-  $('#health-content').innerHTML = `<h2 class="group-title">System</h2>
-  <dl class="panel stat-strip">
+  const problems = interruptedCount + errors.length + (tunnelUp ? 0 : 1);
+  $('#health-content').innerHTML = `<section class="card"><header class="title-bar"><span class="tb-icon tone-${problems ? 'waiting' : 'done'}">${icon('system')}</span><h2>System</h2><span class="pill tone-${tunnelUp && !errors.length ? 'done' : 'waiting'}">${tunnelUp && !errors.length ? 'Healthy' : 'Check'}</span></header>
+  <dl class="stat-strip">
     <div class="stat"><dt>Tunnel</dt><dd><span class="state state-${tunnelUp ? 'done' : 'failed'}">${tunnelUp ? 'Up' : 'Down'}</span>${tunnelWhere ? `<span class="stat-note">${escapeHTML(String(tunnelWhere).replace(/^https?:\/\//, ''))}</span>` : ''}</dd></div>
     <div class="stat"><dt>Uptime</dt><dd class="num">${escapeHTML(formatDuration(state.health.uptime_s ?? state.health.uptime_seconds))}</dd></div>
     <div class="stat"><dt>Last restart</dt><dd class="num">${escapeHTML(formatTime(state.health.last_restart))}</dd></div>
     <div class="stat"><dt>Interrupted runs</dt><dd class="num${interruptedCount ? ' is-warn' : ''}">${interruptedCount}</dd></div>
     <div class="stat"><dt>Recent errors</dt><dd class="num${errors.length ? ' is-bad' : ''}">${errors.length}</dd></div>
   </dl>
-  ${interrupted.length || errors.length ? `<ul class="panel row-list system-log">${interrupted.map(item => `<li class="row"><span class="state state-pending">Interrupted</span><span class="row-main"><span class="row-title">${line(item)}</span></span></li>`).join('')}${errors.map(item => `<li class="row"><span class="state state-failed">Error</span><span class="row-main"><span class="row-title">${line(item)}</span></span></li>`).join('')}</ul>` : ''}`;
+  ${interrupted.length || errors.length ? `<ul class="row-list system-log">${interrupted.map(item => `<li class="row"><span class="state state-pending">Interrupted</span><span class="row-main"><span class="row-title">${line(item)}</span></span></li>`).join('')}${errors.map(item => `<li class="row"><span class="state state-failed">Error</span><span class="row-main"><span class="row-title">${line(item)}</span></span></li>`).join('')}</ul>` : ''}</section>`;
 }
 
 async function refreshHealth({ throwOnError = false } = {}) {
   try {
     state.health = await api('/health');
-    state.loaded.health = true; state.invalidated.health = false;
     renderHealth();
   }
   catch (error) {
@@ -1453,6 +1582,7 @@ function renderSchedules() {
     <div class="schedule-history-panel" data-schedule-history-panel="${escapeHTML(schedule.id)}">${state.scheduleHistoryOpen.has(schedule.id) ? scheduleHistoryBlock(schedule) : ''}</div>
   </article>`).join('') : '<div class="panel"><p class="empty-line">No schedules yet.</p></div>';
   tickScheduleClocks();
+  updateTimersBadge();
 }
 
 // Updates only the relative "in 3 h 20 m" text on a timer, without re-rendering the
@@ -1476,7 +1606,6 @@ async function refreshSchedules({ throwOnError = false } = {}) {
     state.capabilityOptions = payload.capability_options || [];
     state.reportOptions = payload.report_options || [];
     state.weekdayOptions = payload.weekdays || [];
-    state.loaded.schedules = true; state.invalidated.schedules = false;
     renderSchedules();
   } catch (error) {
     if (throwOnError) throw error;
@@ -1493,27 +1622,29 @@ const GROUP_MODE_OPTIONS = [
 function renderGroups() {
   const host = $('#groups-list');
   host.setAttribute('aria-busy', 'false');
+  const badge = $('#groups-badge'); if (badge) badge.textContent = state.groups.length;
   if (!state.groups.length) {
-    host.innerHTML = '<p class="empty-line">No group chats yet.</p>';
+    host.innerHTML = '<div class="card"><p class="empty-line">No group chats yet.</p></div>';
     return;
   }
-  host.innerHTML = state.groups.map(g => `<div class="row group-row" data-chat-id="${escapeHTML(g.chat_id)}">
-    <div class="group-row-main">
-      <div class="group-row-title">${escapeHTML(g.title)}</div>
-      <div class="row-meta">${escapeHTML(sentenceCase(g.channel))}, ${g.member_count} member${g.member_count === 1 ? '' : 's'}</div>
+  const MODE_TONE = { natural: 'done', mention: 'accent', silent: '' };
+  host.innerHTML = state.groups.map(g => `<article class="card group-card group-row" data-chat-id="${escapeHTML(g.chat_id)}">
+    <header class="title-bar">${avatar(g.title, 'group')}<h2 class="group-row-title">${escapeHTML(g.title)}</h2>${channelMark(g.channel)}</header>
+    <div class="card-body">
+      <span class="tag-line"><span class="pill">${g.member_count} member${g.member_count === 1 ? '' : 's'}</span><span class="pill tone-${MODE_TONE[g.response_mode] ?? ''}">${escapeHTML((GROUP_MODE_OPTIONS.find(o => o.value === g.response_mode) || {}).label || g.response_mode)}</span>${g.updated_at ? `<span class="pill">${escapeHTML(relTime(g.updated_at))}</span>` : ''}</span>
+      <label class="group-row-mode">
+        <span class="visually-hidden">Reply mode for ${escapeHTML(g.title)}</span>
+        <select data-group-mode aria-label="Reply mode for ${escapeHTML(g.title)}">${GROUP_MODE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === g.response_mode ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
+      </label>
+      <span class="group-row-save-state pill" role="status" hidden></span>
     </div>
-    <label class="group-row-mode">
-      <span class="visually-hidden">Response mode for ${escapeHTML(g.title)}</span>
-      <select data-group-mode aria-label="Response mode for ${escapeHTML(g.title)}">${GROUP_MODE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === g.response_mode ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
-    </label>
-    <span class="group-row-save-state row-meta" role="status"></span>
-  </div>`).join('');
+  </article>`).join('');
 }
 
 async function saveGroupMode(chatId, mode) {
   const row = $(`.group-row[data-chat-id="${CSS.escape(chatId)}"]`);
   const status = row ? $('.group-row-save-state', row) : null;
-  if (status) status.textContent = 'Saving…';
+  if (status) { status.hidden = false; status.textContent = 'Saving'; }
   try {
     const result = await post('/groups/mode', { chat_id: chatId, response_mode: mode });
     state.groups = result.groups || state.groups;
@@ -1530,7 +1661,6 @@ async function refreshGroups({ throwOnError = false } = {}) {
   try {
     const payload = await api('/groups');
     state.groups = payload.groups || [];
-    state.loaded.groups = true; state.invalidated.groups = false;
     renderGroups();
   } catch (error) {
     if (throwOnError) throw error;
@@ -1811,23 +1941,24 @@ function renderSettings() {
         <div class="setting-value">
           ${settingControl(setting)}
           <div class="setting-meta">
-            ${SOURCE_WORDS[setting.source] ? `<span class="row-meta">${SOURCE_WORDS[setting.source]}</span>` : ''}
+            ${SOURCE_WORDS[setting.source] ? `<span class="pill${setting.source === 'console' ? ' tone-accent' : ''}">${SOURCE_WORDS[setting.source]}</span>` : ''}
             ${changed ? '<button class="button button-quiet button-small setting-reset" type="button" data-reset-setting>Reset</button>' : ''}
             <span class="setting-save-state${status?.type === 'error' ? ' is-error' : ''}" role="status">${escapeHTML(status?.text || '')}</span>
           </div>
         </div>
       </div>`;
   };
-  const groupHTML = (prefix, entries) => entries.map(([group, settings], groupIndex) => `<section class="settings-group" aria-labelledby="${prefix}-${groupIndex}">
-    <h2 class="group-title" id="${prefix}-${groupIndex}">${escapeHTML(group)}</h2>
-    <div class="panel settings-panel">${settings.map(rowHTML).join('')}</div>
+  const GROUP_ICONS = { Speaking: 'groups', Safety: 'approvals', Memory: 'memory', Pages: 'pages', Schedules: 'schedule', Engine: 'runs', Models: 'runs' };
+  const groupHTML = (prefix, entries) => entries.map(([group, settings], groupIndex) => `<section class="card settings-group" aria-labelledby="${prefix}-${groupIndex}">
+    <header class="title-bar"><span class="tb-icon">${icon(GROUP_ICONS[group] || 'settings')}</span><h2 id="${prefix}-${groupIndex}">${escapeHTML(group)}</h2><span class="badge">${settings.length}</span></header>
+    <div class="settings-panel">${settings.map(rowHTML).join('')}</div>
   </section>`).join('');
   const split = advanced => [...groups.entries()].map(([group, settings]) => [group, settings.filter(setting => ADVANCED_SETTINGS.has(setting.name) === advanced)]).filter(([, settings]) => settings.length);
   host.innerHTML = groupHTML('settings-group', split(false))
-    + `<details class="advanced-settings"${state.advancedOpen ? ' open' : ''}><summary><span>Advanced</span><span class="row-meta">Switches for finished changes and engine internals</span></summary>
+    + `<details class="advanced-settings card"${state.advancedOpen ? ' open' : ''}><summary class="title-bar"><span class="tb-icon">${icon('auto')}</span><h2>Advanced</h2><span class="badge">${state.settings.filter(st => ADVANCED_SETTINGS.has(st.name)).length}</span></summary><div class="advanced-body">
       ${groupHTML('settings-advanced', split(true))}
-      <p class="advanced-link"><a class="button button-quiet button-small" href="${VIEW_PATHS.scopes}" data-route="scopes">Every permission, in full</a></p>
-    </details>`;
+      <p class="advanced-link"><a class="button button-secondary button-small" href="${VIEW_PATHS.scopes}" data-route="scopes">Every permission</a></p>
+    </div></details>`;
   $('.advanced-settings', host)?.addEventListener('toggle', event => { state.advancedOpen = event.target.open; });
   $$('textarea[data-setting-control]', host).forEach(growSettingTextarea);
 }
@@ -1865,8 +1996,8 @@ async function saveSetting(setting, value) {
 async function refreshSettings({ throwOnError = false } = {}) {
   try {
     state.settings = await api('/settings');
-    state.loaded.settings = true; state.invalidated.settings = false;
     renderSettings();
+    renderAutoMode();
   }
   catch (error) {
     if (throwOnError) throw error;
@@ -1885,7 +2016,7 @@ function connectEvents() {
   source.addEventListener('request.created', handleRequestEvent);
   source.addEventListener('request.state_changed', handleRequestEvent);
   source.addEventListener('permissions.changed', () => {
-    invalidateView('roles', refreshRoles);
+    invalidateView('permissions', refreshRoles);
     invalidateView('people', () => refreshPeople({external:true}));
     invalidateView('scopes', refreshScopesBreakdown);
     invalidateHome();
@@ -1895,9 +2026,9 @@ function connectEvents() {
     invalidateHome();
   });
   source.addEventListener('people.changed', handlePeopleEvent);
-  source.addEventListener('health.changed', () => { invalidateView('settings', refreshHealth); invalidateHome(); });
-  source.addEventListener('settings.changed', () => invalidateView('settings', refreshSettings));
-  source.addEventListener('schedules.changed', () => invalidateHome());
+  source.addEventListener('health.changed', () => { invalidateView('settings', refreshHealth); invalidateView('inbox', refreshMessages); invalidateView('outbox', refreshMessages); invalidateHome(); });
+  source.addEventListener('settings.changed', () => { invalidateView('settings', refreshSettings); invalidateView('permissions', refreshSettings); });
+  source.addEventListener('schedules.changed', () => { invalidateHome(); invalidateView('timers', refreshSchedules); invalidateView('approvals', refreshApprovals); });
   source.onerror = async () => {
     source.close();
     if (state.eventSource !== source) return;
@@ -1915,19 +2046,23 @@ function invalidateView(view, refresh) {
 }
 
 function invalidateHome() {
-  invalidateView('home', refreshHome);
+  invalidateView('overview', refreshHome);
 }
 
 function handleRequestEvent() {
-  invalidateView('activity', refreshActivity);
+  invalidateView('runs', refreshActivity);
+  invalidateView('approvals', refreshApprovals);
+  invalidateView('inbox', refreshMessages);
+  invalidateView('outbox', refreshMessages);
   invalidateHome();
-  if (state.activeView !== 'home') refreshWaitingCount().catch(error => showNotice(`Waiting count not refreshed: ${error.message}`, 'error'));
+  if (state.activeView !== 'overview') refreshWaitingCount().catch(error => showNotice(`Waiting count not refreshed: ${error.message}`, 'error'));
 }
 
 function setStreamState(streamState) {
   state.streamState = streamState;
   const dot = $('#stream-dot');
   dot.className = `stream-dot${streamState === 'live' ? ' is-live' : streamState === 'connecting' ? ' is-connecting' : ''}`;
+  $('#stream-pill').className = `pill pill-${streamState === 'live' ? 'live' : streamState === 'connecting' ? 'connecting' : 'offline'}`;
   $('#stream-label').textContent = sentenceCase(streamState);
 }
 
@@ -1936,7 +2071,7 @@ function applyRoute({ replaceUnknown = false } = {}) {
   if (hashTarget) history.replaceState(null, '', hashTarget);
   const route = routeFromPath();
   if (route.redirect) history.replaceState(null, '', route.redirect);
-  else if (route.unknown && replaceUnknown) history.replaceState(null, '', VIEW_PATHS.home);
+  else if (route.unknown && replaceUnknown) history.replaceState(null, '', VIEW_PATHS.overview);
   state.activeView = route.view;
   state.taskId = route.taskId;
   $$('[data-view]').forEach(section => { section.hidden = section.dataset.view !== route.view; });
@@ -1956,7 +2091,7 @@ function applyRoute({ replaceUnknown = false } = {}) {
 function navigate(path, { replace = false } = {}) {
   history[replace ? 'replaceState' : 'pushState'](null, '', path);
   applyRoute();
-  const heading = $(`[data-view="${state.activeView}"] h1, [data-view="${state.activeView}"] h2`);
+  const heading = $(`[data-view="${state.activeView}"] h1`);
   if (heading && !$('dialog[open]')) {
     heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
@@ -1967,7 +2102,7 @@ function moveWaiting(direction) {
   const waiting = pendingRequests();
   if (!waiting.length) return;
   state.selectedWaiting = (state.selectedWaiting + direction + waiting.length) % waiting.length;
-  renderHome();
+  renderApprovals();
   const selected = $(`[data-waiting-index="${state.selectedWaiting}"]`);
   selected?.focus({ preventScroll: true });
   selected?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -1981,7 +2116,7 @@ document.addEventListener('click', event => {
   const routeLink = event.target.closest('a[data-route]');
   if (routeLink && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
-    navigate(routeLink.pathname);
+    navigate(routeLink.pathname || new URL(routeLink.getAttribute('href'), location.href).pathname);
     return;
   }
   const waitingCard = event.target.closest('[data-waiting-index]');
@@ -2020,7 +2155,7 @@ document.addEventListener('click', event => {
   const cancelDeleteRoleButton = event.target.closest('[data-cancel-delete-role]');
   if (cancelDeleteRoleButton) hideRoleDeletePreview(cancelDeleteRoleButton.closest('[data-role-name]').dataset.roleName);
   const taskButton = event.target.closest('[data-task-id]');
-  if (taskButton) navigate(`${VIEW_PATHS.activity}/${encodeURIComponent(taskButton.dataset.taskId)}`);
+  if (taskButton) navigate(`${VIEW_PATHS.runs}/${encodeURIComponent(taskButton.dataset.taskId)}`);
   const scheduleActionButton = event.target.closest('[data-schedule-action]');
   if (scheduleActionButton) {
     const id = Number(scheduleActionButton.closest('[data-schedule-id]').dataset.scheduleId);
@@ -2167,7 +2302,7 @@ document.addEventListener('keydown', event => {
   if (event.key === '?' && !isTypingTarget(event.target)) { event.preventDefault(); $('#shortcuts-dialog').showModal(); return; }
   if (event.key === '/' && state.activeView === 'people' && !isTypingTarget(event.target)) { event.preventDefault(); $('#people-search').focus(); return; }
   if (isTypingTarget(event.target) || $('dialog[open]')) return;
-  if (state.activeView !== 'home') return;
+  if (state.activeView !== 'approvals') return;
   if (event.key === 'j') { event.preventDefault(); moveWaiting(1); }
   if (event.key === 'k') { event.preventDefault(); moveWaiting(-1); }
   if ((event.key === 'y' || event.key === 'n') && pendingRequests().length) {
@@ -2263,16 +2398,29 @@ $('#refresh-activity').addEventListener('click', () => refreshActivity());
 $('#refresh-groups').addEventListener('click', () => refreshGroups());
 $('#refresh-health').addEventListener('click', () => { refreshHealth(); refreshSettings(); });
 $('#refresh-messages').addEventListener('click', () => refreshMessages());
+$('#refresh-inbox').addEventListener('click', () => refreshMessages());
+$('#refresh-overview').addEventListener('click', () => refreshHome());
+$('#refresh-approvals').addEventListener('click', () => refreshApprovals());
+$('#refresh-memory').addEventListener('click', () => refreshMemory());
+$('#refresh-pages').addEventListener('click', () => refreshPages());
+document.addEventListener('click', event => {
+  const seg = event.target.closest('[data-seg]');
+  if (!seg) return;
+  const key = { Source: 'inboxKind', Status: 'inboxStatus', 'Outbox status': 'outboxStatus' }[seg.dataset.seg];
+  if (!key) return;
+  state[key] = seg.dataset.value;
+  if (key === 'outboxStatus') renderOutbox(); else renderInbox();
+});
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => {
   if (event.target === dialog) dialog.close();
 }));
 $('#task-dialog').addEventListener('close', () => {
-  if (state.taskId) navigate(VIEW_PATHS.activity, { replace: true });
+  if (state.taskId) navigate(VIEW_PATHS.runs, { replace: true });
 });
 window.addEventListener('popstate', applyRoute);
 
 applyRoute({ replaceUnknown: true });
-if (state.activeView !== 'home') refreshWaitingCount().catch(error => showNotice(`Waiting count not loaded: ${error.message}`, 'error'));
+if (state.activeView !== 'overview') refreshWaitingCount().catch(error => showNotice(`Waiting count not loaded: ${error.message}`, 'error'));
 connectEvents();
 
 // Blatbot's picture comes from the backend, which fetches it from its Inkbox identity.
@@ -2325,3 +2473,351 @@ document.addEventListener('keydown', event => {
     event.target.click();
   }
 });
+
+// ---- Shared marks: icons, avatars, channel marks, pills, small charts ----------------------
+// Declared as functions (hoisted) so the first route, which runs above, can use them.
+function icon(name) { return `<svg class="ic" aria-hidden="true"><use href="#i-${escapeHTML(name)}"/></svg>`; }
+
+function hueFor(text) {
+  let h = 0;
+  for (const ch of String(text || '')) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return h;
+}
+function initials(name) {
+  const words = String(name || '?').replace(/[^\p{L}\p{N}\s&]/gu, ' ').split(/\s+/).filter(w => w && w !== '&');
+  return ((words[0]?.[0] || '?') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+}
+function avatar(name, size = '') {
+  return `<span class="avatar${size ? ` ${size}` : ''}" style="--h:${hueFor(name)}" aria-hidden="true">${escapeHTML(initials(name))}</span>`;
+}
+function channelMark(surface) {
+  const key = String(surface || '').toLowerCase();
+  if (!key) return '';
+  const marks = {
+    telegram: ['telegram', 'Telegram', '<path fill="#fff" d="M5.2 11.6l12.4-4.8c.6-.2 1.1.1.9 1L16.4 18c-.2.7-.6.9-1.2.6l-3.2-2.4-1.6 1.5c-.2.2-.3.3-.7.3l.2-3.3 6-5.4c.3-.2-.1-.4-.4-.2l-7.4 4.7-3.2-1c-.7-.2-.7-.7.3-1.2z"/>'],
+    imessage: ['imessage', 'iMessage', '<path fill="#fff" d="M12 5c-4.4 0-8 2.9-8 6.5 0 2 1.1 3.8 2.9 5L6 19.5l3.3-1.7c.9.2 1.8.4 2.7.4 4.4 0 8-2.9 8-6.6S16.4 5 12 5z"/>'],
+    sms: ['sms', 'Text message', '<path fill="#fff" d="M5 6h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4 3v-3H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"/><path stroke="#26b851" stroke-width="1.6" stroke-linecap="round" d="M8 10h8M8 13h5"/>'],
+    email: ['email', 'Email', '<rect x="4" y="6" width="16" height="12" rx="2" fill="#fff"/><path d="M4.5 7l7.5 6 7.5-6" fill="none" stroke="#5267e8" stroke-width="1.6"/>'],
+    phone: ['phone', 'Phone', '<path fill="#fff" d="M7.5 4.5h2.6l1.3 3.6-1.8 1.1a9.5 9.5 0 0 0 5.2 5.2l1.1-1.8 3.6 1.3v2.6a1.8 1.8 0 0 1-1.8 1.8A14 14 0 0 1 5.7 6.3a1.8 1.8 0 0 1 1.8-1.8z"/>'],
+  };
+  const alias = { text: 'sms', voice: 'phone', 'text message': 'sms', mail: 'email' };
+  const mark = marks[alias[key] || key];
+  if (!mark) {
+    const other = { schedule: 'schedule', timer: 'timers', web: 'pages', console: 'settings', a2a: 'runs', webhook: 'inbox' }[key] || 'groups';
+    return `<span class="chan chan-other" title="${escapeHTML(surfaceWord(surface))}" aria-label="${escapeHTML(surfaceWord(surface))}">${icon(other)}</span>`;
+  }
+  return `<span class="chan chan-${mark[0]}" title="${mark[1]}" aria-label="${mark[1]}"><svg viewBox="0 0 24 24">${mark[2]}</svg></span>`;
+}
+function outcomePill(outcome) {
+  if (!outcome || !outcome.text || outcome.kind === 'none') return '';
+  const icons = { sent: 'outbox', quiet: 'runs', asked: 'approvals', deferred: 'approvals', failed: 'stuck' };
+  return `<span class="outcome-pill outcome-${escapeHTML(outcome.kind)}" title="${escapeHTML(outcome.text)}">${icon(icons[outcome.kind] || 'runs')}<span>${escapeHTML(outcome.text)}</span></span>`;
+}
+function subBar(title, iconName, count) {
+  return `<div class="sub-bar"><span class="tb-icon">${icon(iconName)}</span><h3>${escapeHTML(title)}</h3>${count == null ? '' : `<span class="badge">${escapeHTML(count)}</span>`}</div>`;
+}
+function countBy(rows, key) {
+  return rows.reduce((acc, row) => { const k = row[key]; acc[k] = (acc[k] || 0) + 1; return acc; }, {});
+}
+function toSeconds(value) {
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return n > 1e12 ? n / 1000 : n;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms / 1000 : 0;
+}
+function hourBuckets(times, hours) {
+  const now = Date.now() / 1000;
+  const out = new Array(hours).fill(0);
+  times.forEach(t => { const age = now - toSeconds(t); const i = hours - 1 - Math.floor(age / 3600); if (age >= 0 && i >= 0 && i < hours) out[i] += 1; });
+  return out;
+}
+function dayBuckets(times, days) {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const today = start.getTime() / 1000;
+  const out = new Array(days).fill(0);
+  times.forEach(t => {
+    const s = toSeconds(t);
+    if (!s) return;
+    const idx = s >= today ? days - 1 : days - 2 - Math.floor((today - s) / 86400);
+    if (idx >= 0 && idx < days) out[idx] += 1;
+  });
+  return out;
+}
+function sparkBars(values, variant = '') {
+  const max = Math.max(1, ...values);
+  const w = 100 / values.length;
+  const bars = values.map((v, i) => { const h = v ? Math.max(3, (v / max) * 32) : 1.5; return `<rect x="${(i * w + w * 0.15).toFixed(2)}" y="${(34 - h).toFixed(2)}" width="${(w * 0.7).toFixed(2)}" height="${h.toFixed(2)}" rx="1"${i === values.length - 1 ? ' class="is-now"' : ''}><title>${v}</title></rect>`; }).join('');
+  return `<svg class="spark${variant ? ` ${variant}` : ''}" viewBox="0 0 100 34" preserveAspectRatio="none" role="img" aria-label="${escapeHTML(values.join(', '))}">${bars}</svg>`;
+}
+function statCard({ label, icon: iconName = 'chart', value = null, unit = '', tone = '', pill = '', pillTone = '', chart = '', axis = null, href = '', route = '', foot = '' }) {
+  const tag = href ? 'a' : 'div';
+  return `<${tag} class="stat-card"${href ? ` href="${escapeHTML(href)}" data-route="${escapeHTML(route)}"` : ''}>
+    <div class="stat-card-head"><span class="tb-icon${tone ? ` tone-${tone}` : ''}">${icon(iconName)}</span><span class="stat-card-label">${escapeHTML(label)}</span></div>
+    ${value === null ? '' : `<div class="stat-card-value"${tone && (Number(value) || value === 'On') ? ` style="color:var(--${tone === 'accent' ? 'accent-hi' : tone})"` : ''}>${escapeHTML(typeof value === 'number' ? value.toLocaleString() : value)}${unit ? `<small>${escapeHTML(unit)}</small>` : ''}</div>`}
+    ${chart}${axis ? `<div class="spark-axis"><span>${escapeHTML(axis[0])}</span><span>${escapeHTML(axis[1])}</span></div>` : ''}
+    ${foot || pill ? `<div class="stat-card-foot">${pill ? `<span class="pill${pillTone ? ` tone-${pillTone}` : ''}">${escapeHTML(pill)}</span>` : ''}${foot}</div>` : ''}
+  </${tag}>`;
+}
+
+function updateNavCounts() {
+  const running = state.overview?.counts?.running || 0;
+  const nr = $('#nav-running-count'); if (nr) { nr.hidden = !running; nr.textContent = running; }
+  const inbox = state.inbox?.counts || state.health?.inbox || {};
+  const open = (inbox.pending || 0) + (inbox.running || 0);
+  const ni = $('#nav-inbox-count'); if (ni) { ni.hidden = !open; ni.textContent = open; }
+}
+
+function settingValue(name) { return (state.settings || []).find(s => s.name === name); }
+
+// ---- Overview: the loop from the article, drawn with live counts ----------------------------
+function loopModel() {
+  const inbox = state.health?.inbox || state.inbox?.counts || {};
+  const outbox = state.health?.outbox || state.outbox?.counts || {};
+  const counts = state.overview?.counts || {};
+  const schedulesActive = (state.schedules || []).filter(s => s.state === 'active').length;
+  const followups = state.followups?.pending || 0;
+  const mem = state.memory;
+  const msgTotal = mem ? Object.values(mem.messages?.by_kind || {}).reduce((a, b) => a + b, 0) : null;
+  const waiting = pendingRequests().length;
+  const auto = settingValue('GATE_AUTO_MODE');
+  const roles = state.rolesSummary?.roles?.length;
+  const n = v => (v == null ? '–' : Number(v).toLocaleString());
+  return {
+    timers: { title: 'Timers', icon: 'timers', route: 'timers', num: n(schedulesActive + followups), unit: 'set', chips: [[`${followups} follow-ups`, followups ? 'running' : ''], [`${schedulesActive} schedules`, '']] },
+    inbox: { title: 'Event inbox', icon: 'inbox', route: 'inbox', num: n((inbox.pending || 0) + (inbox.running || 0)), unit: 'open', tone: inbox.failed ? 'bad' : '',
+      chips: [[`${n(inbox.done)} done`, 'done'], ...(inbox.failed ? [[`${inbox.failed} failed`, 'failed']] : [[`${inbox.pending || 0} waiting`, inbox.pending ? 'waiting' : '']])] },
+    run: { title: 'Runs and sessions', icon: 'runs', route: 'runs', core: true, num: n(counts.running || 0), unit: 'running now',
+      chips: [[`${counts.done_today || 0} done today`, 'done'], [`${counts.stuck || 0} stuck`, counts.stuck ? 'failed' : '']] },
+    memory: { title: 'Memory', icon: 'memory', route: 'memory', num: n(msgTotal), unit: 'messages kept',
+      chips: [[`${n(mem?.notes?.total)} notes`, ''], [mem?.graph?.enabled ? 'Graph on' : 'Graph off', mem?.graph?.enabled ? 'done' : '']] },
+    permissions: { title: 'Permissions', icon: 'permissions', route: waiting ? 'approvals' : 'permissions', num: n(waiting), unit: 'waiting on you', tone: waiting ? 'alert' : '',
+      chips: [[`${n(roles)} roles`, ''], [auto ? `Auto mode ${auto.value ? 'on' : 'off'}` : 'Auto mode', auto?.value ? 'done' : '']] },
+    outbox: { title: 'Outbox', icon: 'outbox', route: 'outbox', num: n(outbox.sent), unit: 'sent', tone: outbox.failed ? 'bad' : '',
+      chips: [[`${(outbox.queued || 0) + (outbox.sending || 0)} queued`, (outbox.queued || outbox.sending) ? 'running' : ''], [`${outbox.held || 0} held`, outbox.held ? 'waiting' : ''], ...(outbox.failed ? [[`${outbox.failed} failed`, 'failed']] : [])] },
+    people: { title: 'You and people', icon: 'people', route: 'people', num: n(state.people?.length || null), unit: 'people', chips: [[`${state.groups?.length || 0} group chats`, '']] },
+  };
+}
+
+function loopNodeSVG(node, x, y, w, h) {
+  const chipX = [];
+  let cx = x + 16;
+  const chips = node.chips.map(([text, tone]) => {
+    const cw = Math.round(text.length * 6.1 + 16);
+    const out = `<g class="chip${tone ? ` tone-${tone}` : ''}"><rect x="${cx}" y="${y + h - 32}" width="${cw}" height="20" rx="10"/><text x="${cx + cw / 2}" y="${y + h - 18.5}" text-anchor="middle">${escapeHTML(text)}</text></g>`;
+    chipX.push(cx); cx += cw + 6;
+    return out;
+  }).join('');
+  return `<a class="node${node.core ? ' is-core' : ''}${node.tone ? ` is-${node.tone}` : ''}" href="${VIEW_PATHS[node.route]}" data-route="${node.route}" aria-label="${escapeHTML(node.title)}: ${escapeHTML(node.num)} ${escapeHTML(node.unit)}">
+    <rect class="node-bg" x="${x}" y="${y}" width="${w}" height="${h}" rx="14"/>
+    <rect class="node-icon-bg" x="${x + 14}" y="${y + 14}" width="30" height="30" rx="9"/>
+    <use class="node-icon" href="#i-${node.icon}" x="${x + 20}" y="${y + 20}" width="18" height="18"/>
+    <text class="node-title" x="${x + 54}" y="${y + 34}">${escapeHTML(node.title)}</text>
+    <text x="${x + 16}" y="${y + 80}"><tspan class="node-num">${escapeHTML(node.num)}</tspan><tspan class="node-unit" dx="8">${escapeHTML(node.unit)}</tspan></text>
+    ${chips}
+  </a>`;
+}
+
+function loopHTML() {
+  const m = loopModel();
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const edges = [
+    ['e-timers', 'M244 102 C 300 102 290 220 344 220', ['Due timers'], 286, 182, true, 'end'],
+    ['e-people', 'M244 378 C 300 378 290 262 344 262', ['Replies arrive', 'as events'], 288, 284, true, 'end'],
+    ['e-inbox', 'M568 240 H 668', ['Starts a run'], 618, 230, true],
+    ['e-memory', 'M792 126 V 156', ['Reads and writes back'], 802, 145, false, 'start'],
+    ['e-perm', 'M792 324 V 354', ['Acts within'], 802, 343, false, 'start'],
+    ['e-outbox', 'M916 240 H 1012', ['Sends, stays', 'quiet or defers'], 964, 216, true],
+    ['e-deliver', 'M1118 304 V 486 Q 1118 504 1100 504 H 150 Q 132 504 132 486 V 440', ['Delivers outcomes'], 560, 496, true],
+  ];
+  const edgeSVG = edges.map(([id, d, label, lx, ly, hot, anchor = 'middle']) => `<path id="${id}" class="edge${hot ? ' is-hot' : ' dashed'}" d="${d}" marker-end="url(#arrow)"${id === 'e-memory' ? ' marker-start="url(#arrowStart)"' : ''}/>
+    <text class="edge-label" x="${lx}" y="${ly}" text-anchor="${anchor}">${label.map((line, k) => `<tspan x="${lx}" dy="${k ? 14 : 0}">${escapeHTML(line)}</tspan>`).join('')}</text>
+    ${hot && !reduced ? `<circle class="dot" r="3.2"><animateMotion dur="${id === 'e-deliver' ? 6 : 2.8}s" repeatCount="indefinite"><mpath href="#${id}"/></animateMotion></circle>` : ''}`).join('');
+  const svg = `<svg class="loop-svg" viewBox="0 0 1240 520" role="group" aria-label="How everything fits together">
+    <defs>
+      <linearGradient id="flowGrad" x1="0" x2="1"><stop offset="0" stop-color="#8f7cff"/><stop offset="1" stop-color="#45d6c4"/></linearGradient>
+      <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6f7bc0"/></marker>
+      <marker id="arrowStart" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6f7bc0"/></marker>
+    </defs>
+    ${edgeSVG}
+    ${loopNodeSVG(m.timers, 20, 40, 224, 124)}
+    ${loopNodeSVG(m.people, 20, 316, 224, 124)}
+    ${loopNodeSVG(m.inbox, 344, 176, 224, 128)}
+    ${loopNodeSVG(m.memory, 668, 8, 248, 118)}
+    ${loopNodeSVG(m.run, 668, 156, 248, 168)}
+    ${loopNodeSVG(m.permissions, 668, 354, 248, 118)}
+    ${loopNodeSVG(m.outbox, 1012, 176, 212, 128)}
+  </svg>`;
+  const step = (node, link = true) => `<a class="loop-step${node.core ? ' is-core' : ''}" href="${VIEW_PATHS[node.route]}" data-route="${node.route}">
+      <span class="tb-icon">${icon(node.icon)}</span>
+      <span><span class="loop-step-title">${escapeHTML(node.title)}</span><span class="loop-step-sub">${node.chips.map(([t, tone]) => `<span class="pill${tone ? ` tone-${tone}` : ''}">${escapeHTML(t)}</span>`).join('')}</span></span>
+      <span class="loop-step-num">${escapeHTML(node.num)}</span>
+    </a>${link ? '<div class="loop-link" aria-hidden="true"></div>' : ''}`;
+  const stack = `<div class="loop-stack">${step(m.timers)}${step(m.inbox)}${step(m.memory)}${step(m.run)}${step(m.permissions)}${step(m.outbox)}${step(m.people, false)}</div>`;
+  return svg + stack;
+}
+
+// ---- Approvals: deferred tool calls and access asks -----------------------------------------------
+async function refreshApprovals({ throwOnError = false } = {}) {
+  try {
+    const [pending, schedules] = await Promise.all([api('/requests?state=pending'), api('/schedules').catch(() => null)]);
+    state.requests = [...pending, ...state.requests.filter(request => request.state !== 'pending')]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    if (schedules) state.schedules = schedules.schedules || state.schedules;
+    loadScopeLabels();
+    renderApprovals();
+  } catch (error) {
+    if (throwOnError) throw error;
+    showNotice(`Approvals not refreshed: ${error.message}`, 'error');
+  }
+}
+
+function renderApprovals() {
+  const host = $('#approvals-content');
+  if (!host) return;
+  host.setAttribute('aria-busy', 'false');
+  // A live update must not throw away an edit Aaron is typing into a waiting request.
+  const drafts = $$('.request-card', host).map(card => ({ id: card.dataset.requestId, open: !$('.decision-note', card).hidden, text: $('textarea', card)?.value || '' })).filter(d => d.open || d.text);
+  const focusedId = document.activeElement?.closest?.('.request-card textarea') ? document.activeElement.closest('.request-card').dataset.requestId : null;
+  const waiting = pendingRequests();
+  state.selectedWaiting = Math.max(0, Math.min(state.selectedWaiting, waiting.length - 1));
+  const held = (state.schedules || []).filter(s => s.needs_approval);
+  const access = waiting.filter(r => (r.outcome?.text || '').startsWith('Asked you for access')).length;
+  host.innerHTML = `<div class="stat-cards">
+      ${statCard({ label: 'Deferred tool calls', icon: 'runs', value: waiting.length - access, tone: waiting.length - access ? 'waiting' : '' })}
+      ${statCard({ label: 'Access asks', icon: 'permissions', value: access, tone: access ? 'waiting' : '' })}
+      ${statCard({ label: 'Schedules waiting', icon: 'schedule', value: held.length, tone: held.length ? 'waiting' : '' })}
+    </div>
+    <section class="card">
+      <header class="title-bar"><span class="tb-icon tone-waiting">${icon('approvals')}</span><h2>Waiting on you</h2><span class="badge${waiting.length ? ' tone-waiting' : ''}">${waiting.length}</span></header>
+      <div id="waiting-list" class="waiting-list">${waiting.length ? waiting.map((request, index) => requestCard(request, index)).join('') : `<div class="approval-empty"><span class="tb-icon">${icon('done')}</span><span>Nothing is waiting on you.</span></div>`}</div>
+    </section>
+    ${held.length ? `<section class="card">
+      <header class="title-bar"><span class="tb-icon tone-waiting">${icon('schedule')}</span><h2>Schedules waiting for your yes</h2><span class="badge tone-waiting">${held.length}</span></header>
+      <div class="row-list">${held.map(sch => `<div class="row" data-schedule-id="${escapeHTML(sch.id)}"><div class="row-main"><span class="row-title">${escapeHTML(sch.title)}</span><span class="row-meta"><span class="pill">${escapeHTML(sentenceCase(sch.cadence_text))}</span><span class="pill tone-waiting">${escapeHTML(sch.state_label)}</span></span></div><div class="row-actions">${scheduleActionButtons(sch)}</div></div>`).join('')}</div>
+    </section>` : ''}`;
+  drafts.forEach(draft => {
+    const card = $(`.request-card[data-request-id="${CSS.escape(draft.id)}"]`, host);
+    if (!card) return;
+    $('.decision-note', card).hidden = !draft.open;
+    $('[data-show-edit]', card)?.setAttribute('aria-expanded', String(draft.open));
+    $('textarea', card).value = draft.text;
+    if (draft.id === focusedId) $('textarea', card).focus({ preventScroll: true });
+  });
+  updateWaitingCount();
+}
+
+// ---- Memory ------------------------------------------------------------------------------------
+async function refreshMemory({ throwOnError = false } = {}) {
+  try {
+    state.memory = await api('/memory');
+    renderMemory();
+  } catch (error) {
+    if (throwOnError) throw error;
+    showNotice(`Memory not refreshed: ${error.message}`, 'error');
+  }
+}
+
+function barList(entries, variant = '') {
+  const max = Math.max(1, ...entries.map(([, n]) => n));
+  return `<div class="bar-list">${entries.map(([label, n]) => `<div class="bar-item"><span>${escapeHTML(label)}</span><span class="bar-track"><span class="bar-fill${variant ? ` ${variant}` : ''}" style="width:${Math.max(2, (n / max) * 100).toFixed(1)}%"></span></span><span class="num">${Number(n).toLocaleString()}</span></div>`).join('')}</div>`;
+}
+
+function renderMemory() {
+  const host = $('#memory-content');
+  if (!host) return;
+  host.setAttribute('aria-busy', 'false');
+  const m = state.memory;
+  if (!m) { host.innerHTML = '<div class="card"><p class="empty-line">Memory is not available yet.</p></div>'; return; }
+  const kindWords = { inbound: 'Received', outbound: 'Sent', system: 'Notes to itself' };
+  const msgs = Object.entries(m.messages?.by_kind || {}).map(([k, v]) => [kindWords[k] || sentenceCase(k), v]).sort((a, b) => b[1] - a[1]);
+  const msgTotal = msgs.reduce((a, [, v]) => a + v, 0);
+  const taskWords = { open: 'Open', waiting_aaron: 'Waiting on you', running: 'Running', done: 'Done', failed: 'Failed', closed: 'Closed' };
+  const tasks = Object.entries(m.tasks?.by_state || {}).map(([k, v]) => [taskWords[k] || sentenceCase(k), v]).sort((a, b) => b[1] - a[1]);
+  const taskTotal = tasks.reduce((a, [, v]) => a + v, 0);
+  const reported = Object.entries(m.reported?.by_kind || {}).sort((a, b) => b[1] - a[1]);
+  const paragraphs = m.instructions?.paragraphs || [];
+  host.innerHTML = `<div class="stat-cards">
+      ${statCard({ label: 'User instructions', icon: 'instructions', value: paragraphs.length, unit: 'paragraphs', pill: m.instructions?.updated_at ? relTime(m.instructions.updated_at) : '' })}
+      ${statCard({ label: 'User notes', icon: 'notes', value: m.notes?.total || 0, unit: 'notes' })}
+      ${statCard({ label: 'Past messages', icon: 'archive', value: msgTotal, unit: `${m.messages?.chats || 0} chats`, chart: sparkBars(m.messages?.per_day || [], 'flow'), axis: ['14 days ago', 'Today'] })}
+      ${statCard({ label: 'Task progress', icon: 'tasks', value: taskTotal, unit: 'tasks', pill: `${(m.tasks?.ledger_entries || 0).toLocaleString()} ledger lines` })}
+      ${statCard({ label: 'Graph memory', icon: 'graph', value: m.graph?.enabled ? 'On' : 'Off', tone: m.graph?.enabled ? 'done' : 'failed', pill: `${m.graph?.pending_writes || 0} queued` })}
+    </div>
+    <div class="memory-grid">
+      <section class="card">
+        <header class="title-bar"><span class="tb-icon">${icon('instructions')}</span><h2>User instructions</h2><span class="badge">${paragraphs.length}</span></header>
+        ${paragraphs.length ? `<div class="instruction-list">${paragraphs.slice(0, 6).map(t => `<p class="instruction"><span>${escapeHTML(t)}</span></p>`).join('')}</div>
+          ${paragraphs.length > 6 ? `<details class="lane-more"><summary><span class="pill tone-accent">Show ${paragraphs.length - 6} more</span></summary><div class="instruction-list" style="counter-reset: ins 6">${paragraphs.slice(6).map(t => `<p class="instruction"><span>${escapeHTML(t)}</span></p>`).join('')}</div></details>` : ''}`
+          : '<p class="empty-line">No standing instructions.</p>'}
+      </section>
+      <div class="stack">
+        <section class="card">
+          <header class="title-bar"><span class="tb-icon">${icon('notes')}</span><h2>User notes</h2><span class="badge">${m.notes?.total || 0}</span></header>
+          ${m.notes?.available ? barList((m.notes.sections || []).map(s => [s.name, s.count])) : '<p class="empty-line">No vault on this server.</p>'}
+          ${(m.notes?.recent || []).length ? `${subBar('Recently changed', 'notes', m.notes.recent.length)}<ul class="row-list">${m.notes.recent.map(n => `<li class="row"><div class="row-main"><span class="row-title">${escapeHTML(n.title)}</span></div><span class="row-meta"><span class="pill">${escapeHTML(n.section)}</span><span class="pill">${escapeHTML(relTime(n.updated_at))}</span></span></li>`).join('')}</ul>` : ''}
+        </section>
+        <section class="card">
+          <header class="title-bar"><span class="tb-icon tone-flow">${icon('graph')}</span><h2>Graph memory</h2><span class="pill tone-${m.graph?.enabled ? 'done' : 'failed'}">${m.graph?.enabled ? 'On' : 'Off'}</span></header>
+          <div class="card-body tag-line"><span class="pill">Recall waits ${escapeHTML(m.graph?.recall_seconds)} s</span><span class="pill">Up to ${escapeHTML(m.graph?.max_facts)} facts a turn</span><span class="pill${m.graph?.pending_writes ? ' tone-running' : ''}">${escapeHTML(m.graph?.pending_writes || 0)} writes queued</span></div>
+        </section>
+      </div>
+      <section class="card">
+        <header class="title-bar"><span class="tb-icon">${icon('archive')}</span><h2>Past messages</h2><span class="badge">${msgTotal.toLocaleString()}</span></header>
+        ${barList(msgs, 'flow')}
+        ${subBar('Reported back', 'reported', m.reported?.total || 0)}
+        ${reported.length ? barList(reported) : '<p class="empty-line">Nothing reported yet.</p>'}
+      </section>
+      <section class="card">
+        <header class="title-bar"><span class="tb-icon">${icon('tasks')}</span><h2>Task progress</h2><span class="badge">${taskTotal}</span></header>
+        ${barList(tasks)}
+        ${subBar('Latest', 'tasks', (m.tasks?.latest || []).length)}
+        <div class="row-list">${(m.tasks?.latest || []).map(t => `<button type="button" class="row" data-task-id="${escapeHTML(t.id)}">${statePill(t.state)}<span class="row-main"><span class="row-title">${escapeHTML(clean(t.title) || 'Untitled task')}</span></span><span class="row-time">${escapeHTML(relTime(t.updated_at))}</span></button>`).join('')}</div>
+      </section>
+    </div>`;
+}
+
+// ---- Pages: the formatted web pages Blatbot sends for long answers -----------------------------
+async function refreshPages({ throwOnError = false } = {}) {
+  try {
+    state.pages = await api('/pages');
+    renderPages();
+  } catch (error) {
+    if (throwOnError) throw error;
+    showNotice(`Pages not refreshed: ${error.message}`, 'error');
+  }
+}
+
+function renderPages() {
+  const host = $('#pages-content');
+  if (!host) return;
+  host.setAttribute('aria-busy', 'false');
+  const data = state.pages || { pages: [] };
+  const pages = data.pages || [];
+  $('#pages-badge').textContent = pages.length;
+  const audience = (CHOICE_WORDS.GATE_HTML_PAGES_AUDIENCE || {})[data.audience] || sentenceCase(data.audience || '');
+  host.innerHTML = `<div class="stat-cards">
+      ${statCard({ label: 'Live pages', icon: 'pages', value: pages.length })}
+      ${statCard({ label: 'Who gets them', icon: 'people', value: audience || 'Unknown' })}
+      ${statCard({ label: 'Kept for', icon: 'timers', value: Math.round(data.days || 0), unit: 'days' })}
+    </div>
+    ${pages.length ? `<div class="page-cards">${pages.map(page => `<a class="card page-card" href="${escapeHTML(page.url)}" target="_blank" rel="noopener noreferrer">
+        <div class="page-thumb" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="page-card-body">${escapeHTML(page.title)}</div>
+        <div class="page-card-foot"><span class="pill tone-accent">${icon('external')}Open</span><span class="pill">${escapeHTML(relTime(page.created_at))}</span><span class="pill">Expires ${escapeHTML(relTime(page.expires_at))}</span><span class="pill">${Math.max(1, Math.round((page.bytes || 0) / 1024))} KB</span></div>
+      </a>`).join('')}</div>` : '<div class="card"><p class="empty-line">No pages sent yet.</p></div>'}`;
+}
+
+// ---- Permissions: auto mode and deferral switches ----------------------------------------------
+function renderAutoMode() {
+  const host = $('#automode-content');
+  if (!host || !state.settings.length) return;
+  const card = (name, iconName) => {
+    const st = settingValue(name);
+    if (!st) return '';
+    const on = st.kind === 'bool' ? !!st.value : st.value != null;
+    return statCard({ label: st.label, icon: iconName, value: st.kind === 'bool' ? (on ? 'On' : 'Off') : String(st.value), tone: on ? 'done' : '', href: VIEW_PATHS.settings, route: 'settings' });
+  };
+  const waiting = pendingRequests().length;
+  host.innerHTML = [card('GATE_AUTO_MODE', 'auto'), card('GATE_NATIVE_DEFER', 'runs'), card('GATE_ACCESS_ASKS', 'permissions'),
+    statCard({ label: 'Approvals waiting', icon: 'approvals', value: waiting, tone: waiting ? 'waiting' : '', href: VIEW_PATHS.approvals, route: 'approvals' })].join('');
+}
