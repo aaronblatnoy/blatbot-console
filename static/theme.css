@@ -465,3 +465,12 @@ body { background:
   .tb-actions { gap: 6px; }
 }
 .role-member-count.pill { justify-self: start; width: fit-content; }
+
+/* Statuses inside schedule cards are pills too */
+.schedule-outcome { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: rgba(61,220,151,.13); color: var(--done); box-shadow: inset 0 0 0 1px rgba(61,220,151,.22); }
+.schedule-outcome-pending { background: rgba(255,181,71,.14); color: var(--waiting); box-shadow: inset 0 0 0 1px rgba(255,181,71,.25); }
+.schedule-outcome-failed { background: rgba(255,107,107,.14); color: var(--failed); box-shadow: inset 0 0 0 1px rgba(255,107,107,.25); }
+.schedule-last-run dd { align-items: center; }
+.schedule-last-run-time { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(135,144,181,.12); color: var(--text-2); }
+.schedule-cadence { color: var(--text-2); }
