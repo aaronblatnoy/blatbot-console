@@ -29,6 +29,7 @@ const state = {
   inbox: null,
   outbox: null,
   followups: null,
+  suggestions: null,
   settings: [],
   settingStatus: {},
   selectedPerson: null,
@@ -1336,6 +1337,27 @@ function renderOutbox() {
     </section>`;
 }
 
+function suggestionRowHTML(row) {
+  const refs = (row.refs || []).join(', ');
+  return `<li class="msg-row">
+    ${statePill(row.status)}
+    <span class="msg-main"><span class="msg-meta"><span class="badge">#${escapeHTML(row.id)}</span>${row.why ? `<span>${escapeHTML(row.why)}</span>` : ''}</span><span class="msg-text">${escapeHTML(row.text)}</span>${refs ? `<span class="msg-meta">${escapeHTML(refs)}</span>` : ''}</span>
+    <time title="${escapeHTML(formatTime(row.created_at))}">${escapeHTML(relTime(row.decided_at || row.created_at))}</time>
+  </li>`;
+}
+
+function renderSuggestions() {
+  const host = $('#suggestions-content');
+  if (!host) return;
+  const data = state.suggestions;
+  const rows = data?.rows || [];
+  const when = (data?.times || []).join(', ');
+  const head = data ? `<p class="empty-line">${data.enabled ? `Suggests at ${escapeHTML(when)} New York time.` : 'Suggestions are off. Turn them on in Settings.'}</p>` : '';
+  host.innerHTML = head + (rows.length ? `<ul class="msg-list">${rows.slice(0, 30).map(suggestionRowHTML).join('')}</ul>` : '');
+  const badge = $('#suggestions-badge');
+  if (badge) { const n = data?.pending || 0; badge.textContent = n; badge.className = `badge${n ? ' tone-running' : ''}`; }
+}
+
 function renderFollowups() {
   const host = $('#followups-content');
   if (!host) return;
@@ -1359,6 +1381,7 @@ function renderMessages() {
   renderInbox();
   renderOutbox();
   renderFollowups();
+  renderSuggestions();
   updateMessagesBadge();
   updateNavCounts();
 }
@@ -1375,8 +1398,9 @@ function updateMessagesBadge() {
 
 async function refreshMessages({ throwOnError = false } = {}) {
   try {
-    const [inbox, outbox, followups] = await Promise.all([api('/inbox'), api('/outbox'), api('/followups')]);
-    Object.assign(state, { inbox, outbox, followups });
+    const [inbox, outbox, followups, suggestions] = await Promise.all([api('/inbox'), api('/outbox'), api('/followups'),
+      api('/suggestions').catch(() => null)]);
+    Object.assign(state, { inbox, outbox, followups, suggestions });
     renderMessages();
   } catch (error) {
     if (throwOnError) throw error;
